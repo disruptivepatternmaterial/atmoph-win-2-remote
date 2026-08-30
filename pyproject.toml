@@ -29,6 +29,20 @@ dev = [
 homeassistant = [
   "homeassistant>=2026.8.0",
 ]
+# The Home Assistant layer suite in tests/homeassistant/. Every release of
+# pytest-homeassistant-custom-component pins one exact Home Assistant version,
+# so this pins the harness rather than Home Assistant itself.
+#
+# aiousbwatcher and serialx are requirements of the `usb` integration, which
+# `homeassistant.components.bluetooth` depends on. Home Assistant installs a
+# component's requirements when it sets the component up, so `pip install
+# homeassistant` alone leaves the import of `bluetooth` failing.
+homeassistant-test = [
+  "pytest-homeassistant-custom-component==0.13.357",
+  "bleak-retry-connector>=4.6.3",
+  "aiousbwatcher==1.1.2",
+  "serialx==1.8.2",
+]
 
 # The repository is a Home Assistant custom component, not a library. Only the
 # integration package is importable; docs, tools, and tests stay out of the
@@ -42,6 +56,12 @@ testpaths = ["tests"]
 # Import the integration from the checkout so the protocol tests run without
 # installing the package.
 pythonpath = ["."]
+# tests/homeassistant/ needs the real package and Home Assistant imported;
+# tests/test_protocol.py asserts the opposite. Keeping the directory out of
+# recursive discovery leaves `pytest` as the fast, Home Assistant free suite
+# while `pytest tests/homeassistant` still runs on request. See
+# tests/homeassistant/__init__.py.
+norecursedirs = ["homeassistant", "*.egg", ".*", "build", "dist", "node_modules"]
 
 [tool.ruff]
 target-version = "py313"

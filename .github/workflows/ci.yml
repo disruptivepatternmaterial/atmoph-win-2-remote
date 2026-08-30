@@ -34,3 +34,22 @@ jobs:
 
       - name: Tests
         run: pytest -q
+
+  # tests/homeassistant/ needs the real Home Assistant, which needs a newer
+  # Python than the protocol suite does. Splitting the jobs keeps the fast
+  # suite honest about running without Home Assistant installed.
+  homeassistant-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b # v5
+        with:
+          python-version: '3.14'
+
+      - name: Install
+        run: pip install -e '.[homeassistant-test]'
+
+      - name: Tests
+        run: pytest -q tests/homeassistant

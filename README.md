@@ -51,12 +51,29 @@ address before connecting.
 
 ## Development
 
+The protocol suite runs without Home Assistant, which is what keeps
+`protocol.py` and `client.py` reusable outside it:
+
 ```sh
 python3 -m venv .venv
 .venv/bin/pip install -e '.[dev]'
 .venv/bin/ruff check .
 .venv/bin/pytest -q
 ```
+
+The Home Assistant layer has its own suite. It needs the real Home Assistant,
+so it runs on its own and is excluded from the command above:
+
+```sh
+.venv/bin/pip install -e '.[homeassistant-test]'
+.venv/bin/pytest -q tests/homeassistant
+```
+
+`pytest-homeassistant-custom-component` pins one exact Home Assistant version
+per release, so bumping the Home Assistant this is tested against means bumping
+that pin. `homeassistant.components.bluetooth` also depends on the `usb`
+integration, whose requirements Home Assistant only installs when it sets that
+component up — `aiousbwatcher` and `serialx` are therefore listed explicitly.
 
 Reverse-engineering inputs belong under `.work/` and are intentionally ignored.
 Do not commit APKs, decompiled vendor code, packet captures, MAC addresses,
