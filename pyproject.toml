@@ -44,11 +44,15 @@ homeassistant-test = [
   "serialx==1.8.2",
 ]
 
-# The repository is a Home Assistant custom component, not a library. Only the
-# integration package is importable; docs, tools, and tests stay out of the
-# wheel so setuptools does not try to auto-discover them.
+# The repository is a Home Assistant custom component, not a library: it ships
+# as the HACS zip, and both test suites import it from the checkout through
+# pytest's pythonpath. Packaging nothing keeps `pip install -e .` to metadata
+# and the extras, which is all it is ever used for. Claiming
+# `custom_components` would instead put setuptools' editable finder into
+# `custom_components.__path__`, and Home Assistant's custom component scan
+# lists every entry there as a directory.
 [tool.setuptools]
-packages = ["custom_components.atmoph_window"]
+packages = []
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
