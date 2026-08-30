@@ -389,6 +389,47 @@ async def check_dump_of_working_window(report: Report) -> None:
     report.equal("descriptor values are read", descriptor[0].value.hex, "01 00")
 
 
+async def check_mtu_reporting(report: Report) -> None:
+    plain = FakeWindow()
+    report.equal(
+        "a backend with no MTU hook still reports its size",
+        await diag.negotiated_mtu(plain),
+        128,
+    )
+
+    class BlueZish:
+        """A backend that only reports the real MTU once it is acquired."""
+
+        def __init__(self) -> None:
+            self.acquired = False
+
+        async def _acquire_mtu(self) -> None:
+            self.acquired = True
+
+    class Nudgeable:
+        def __init__(self) -> None:
+            self._backend = BlueZish()
+
+        @property
+        def mtu_size(self) -> int:
+            return 128 if self._backend.acquired else 23
+
+    nudgeable = Nudgeable()
+    report.equal(
+        "a BlueZ backend is nudged past the 23-byte floor",
+        await diag.negotiated_mtu(nudgeable),
+        128,
+    )
+
+    class Broken:
+        _backend = object()
+        mtu_size = 64
+
+    report.equal(
+        "a backend that raises is tolerated", await diag.negotiated_mtu(Broken()), 64
+    )
+
+
 async def check_dump_of_led_less_window(report: Report) -> None:
     settings = {k: v for k, v in WORKING_SETTINGS.items() if k != "LedBrightness"}
     window = FakeWindow(settings)
@@ -738,6 +779,7 @@ async def run() -> int:
     check_command_line(report)
     check_adb_framing(report)
     await check_dump_of_working_window(report)
+    await check_mtu_reporting(report)
     await check_dump_of_led_less_window(report)
     await check_unreadable_settings_need_provoking(report)
     await check_write_echo_paths(report)

@@ -19,8 +19,17 @@
     }
   },
   "exceptions": {
+    "no_window_targeted": {
+      "message": "No loaded Atmoph Window was targeted. Choose the window to act on."
+    },
     "setting_not_reported": {
       "message": "The window has not reported a range for this setting yet."
+    },
+    "unknown_command": {
+      "message": "{command} is not an Atmoph remote-control command. Known commands are: {commands}."
+    },
+    "unknown_setting": {
+      "message": "{setting} is not an Atmoph quick setting. Known settings are: {settings}."
     },
     "value_out_of_range": {
       "message": "{value} is outside the range the window reports for this setting ({minimum} to {maximum})."
@@ -47,13 +56,40 @@
       "soundscape_volume": { "name": "Soundscape volume" }
     },
     "sensor": {
-      "current_view": { "name": "Current view" }
+      "current_view": { "name": "Current view" },
+      "view_id": { "name": "View ID" }
     },
     "switch": {
       "daily_routine": { "name": "Daily routine" },
       "display": { "name": "Display" },
       "sound_only": { "name": "Sound only" },
       "widgets_visible": { "name": "Widgets" }
+    }
+  },
+  "services": {
+    "send_command": {
+      "name": "Send command",
+      "description": "Sends one remote-control command to a window, including the commands that have no button.",
+      "fields": {
+        "command": {
+          "name": "Command",
+          "description": "The command to send. Double tap and search have no button of their own."
+        }
+      }
+    },
+    "set_setting": {
+      "name": "Set quick setting",
+      "description": "Writes one of the window's quick-menu settings, including the ones with no entity.",
+      "fields": {
+        "setting": {
+          "name": "Setting",
+          "description": "The quick-menu setting to write, named as the window reports it."
+        },
+        "value": {
+          "name": "Value",
+          "description": "A number for a level, or true or false for a switch. A level is checked against the range the window reports."
+        }
+      }
     }
   }
 }

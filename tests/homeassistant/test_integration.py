@@ -9,11 +9,12 @@ from datetime import timedelta
 import pytest
 from homeassistant.components.bluetooth import BluetoothChange
 from homeassistant.config_entries import ConfigEntryState
-from homeassistant.const import STATE_OFF, STATE_ON
+from homeassistant.const import STATE_OFF, STATE_ON, EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
+from homeassistant.util.yaml import load_yaml_dict
 from pytest_homeassistant_custom_component.common import (
     MockConfigEntry,
     async_fire_time_changed,
@@ -24,9 +25,21 @@ from custom_components.atmoph_window.diagnostics import (
     async_get_config_entry_diagnostics,
 )
 from custom_components.atmoph_window.number import NUMBERS, AtmophNumber
-from custom_components.atmoph_window.protocol import QUICK_SETTINGS_UUID
+from custom_components.atmoph_window.protocol import (
+    COMMANDS,
+    QUICK_SETTINGS_UUID,
+    SETTING_KEYS,
+    VIEW_ID_UUID,
+)
 
-from .fakes import ROTATED_ADDRESS, WINDOW_NAME, FakeBluetooth, make_service_info
+from .fakes import (
+    ROTATED_ADDRESS,
+    VIEW_ID,
+    VIEW_REVISION,
+    WINDOW_NAME,
+    FakeBluetooth,
+    make_service_info,
+)
 
 INTEGRATION = pathlib.Path(__file__).parents[2] / "custom_components" / DOMAIN
 
@@ -243,6 +256,62 @@ async def test_button_sends_the_mapped_command(
     assert fake_bluetooth.client.commands[-1] == b"FW"
 
 
+async def test_view_id_sensor_reports_the_catalogue_id_and_its_revision(
+    hass: HomeAssistant, fake_bluetooth: FakeBluetooth, loaded_entry: MockConfigEntry
+) -> None:
+    """View titles repeat and translate, so automations need the catalogue id."""
+    entity_id = entity_id_for(hass, "sensor", "view_id")
+    state = hass.states.get(entity_id)
+
+    assert state.state == VIEW_ID
+    assert state.attributes["revision"] == VIEW_REVISION
+    # The characteristic behind it is an unverified third-party observation, so
+    # the entity is diagnostic rather than part of the primary control surface.
+    entry = er.async_get(hass).async_get(entity_id)
+    assert entry.entity_category is EntityCategory.DIAGNOSTIC
+
+
+async def test_a_window_without_the_view_id_characteristic_still_sets_up(
+    hass: HomeAssistant, fake_bluetooth: FakeBluetooth, config_entry: MockConfigEntry
+) -> None:
+    """The app never binds this characteristic, so a window may not have it.
+
+    An absent one has to cost nothing: setup succeeds, every other entity is
+    unaffected, and no permanently unavailable sensor is left behind.
+    """
+    fake_bluetooth.view_id_supported = False
+    config_entry.add_to_hass(hass)
+
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert config_entry.state is ConfigEntryState.LOADED
+    assert config_entry.runtime_data.data.view_id_supported is False
+    registry = er.async_get(hass)
+    assert (
+        registry.async_get_entity_id("sensor", DOMAIN, f"{WINDOW_NAME}_view_id") is None
+    )
+    assert (
+        hass.states.get(entity_id_for(hass, "sensor", "current_view")).state == "Kyoto"
+    )
+    assert hass.states.get(entity_id_for(hass, "switch", "display")).state == STATE_ON
+
+
+async def test_a_view_id_that_stops_answering_does_not_fail_the_update(
+    hass: HomeAssistant, fake_bluetooth: FakeBluetooth, loaded_entry: MockConfigEntry
+) -> None:
+    """A window that drops the characteristic mid-life must still update."""
+    coordinator = loaded_entry.runtime_data
+    fake_bluetooth.client.values.pop(VIEW_ID_UUID)
+    coordinator.data.view_id_supported = None
+
+    await coordinator.async_refresh()
+
+    assert coordinator.last_update_success
+    assert coordinator.data.view_title == "Kyoto"
+    assert coordinator.data.view_id_supported is False
+
+
 async def test_diagnostics_redact_stable_identifiers(
     hass: HomeAssistant, fake_bluetooth: FakeBluetooth, loaded_entry: MockConfigEntry
 ) -> None:
@@ -285,6 +354,46 @@ def test_english_translations_match_the_source_strings() -> None:
     english = json.loads((INTEGRATION / "translations" / "en.json").read_text())
 
     assert strings == english
+
+
+def test_every_service_and_field_is_documented() -> None:
+    """hassfest rejects a service or field with no name, and so does this.
+
+    The local check exists because hassfest only runs in CI, where a missing
+    string is found after the push rather than before it.
+    """
+    services = load_yaml_dict(str(INTEGRATION / "services.yaml"))
+    strings = json.loads((INTEGRATION / "strings.json").read_text())
+
+    assert set(services) == set(strings["services"])
+    for name, schema in services.items():
+        documented = strings["services"][name]
+        assert documented["name"]
+        assert documented["description"]
+        assert set(schema["fields"]) == set(documented["fields"])
+        for field in documented["fields"].values():
+            assert field["name"]
+            assert field["description"]
+
+
+def test_service_pickers_offer_exactly_the_protocol_tokens() -> None:
+    """A picker that drifts from the protocol offers a token the handler refuses."""
+    services = load_yaml_dict(str(INTEGRATION / "services.yaml"))
+
+    def options(service: str, field: str) -> set[str]:
+        return set(services[service]["fields"][field]["selector"]["select"]["options"])
+
+    assert options("send_command", "command") == set(COMMANDS)
+    assert options("set_setting", "setting") == set(SETTING_KEYS)
+
+
+def test_service_targets_carry_no_device_filter() -> None:
+    """hassfest refuses a device filter on a service target."""
+    services = load_yaml_dict(str(INTEGRATION / "services.yaml"))
+
+    for schema in services.values():
+        assert "device" not in schema["target"]
+        assert schema["target"]["entity"] == {"integration": DOMAIN}
 
 
 def test_declared_icons_belong_to_declared_entities() -> None:

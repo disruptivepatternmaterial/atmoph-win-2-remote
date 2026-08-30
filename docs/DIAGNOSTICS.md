@@ -335,9 +335,9 @@ uv run --no-project --with bleak -- python tools/selftest.py
 
 It covers value rendering, the quick-settings description, all six LED
 verdicts, both gate settings, every write-echo outcome, JSON reassembly across
-notifications, report normalization, filename derivation, and the ADB handshake
-against a real socket serving synthetic CNXN, AUTH, non-ADB, and silent
-replies.
+notifications, report normalization, filename derivation, MTU reporting, and
+the ADB handshake against a real socket serving synthetic CNXN, AUTH, non-ADB,
+and silent replies.
 
 What it does not cover, because it cannot without hardware: the BLE scan, the
 connect, and the real GATT enumeration. Those paths are written and unrun.
