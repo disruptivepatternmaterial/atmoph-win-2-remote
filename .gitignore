@@ -19,3 +19,6 @@ __pycache__/
 .DS_Store
 .idea/
 .vscode/
+
+# Agent rules are personal configuration, not project files
+.cursor/
