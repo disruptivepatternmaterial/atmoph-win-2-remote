@@ -17,6 +17,7 @@ from custom_components.atmoph_window.protocol import (
     POWER_UUID,
     QUICK_SETTINGS_UUID,
     SERVICE_UUID,
+    VIEW_ID_UUID,
     VIEW_IMAGE_UUID,
     VIEW_LOCATION_UUID,
     VIEW_TITLE_UUID,
@@ -25,6 +26,10 @@ from custom_components.atmoph_window.protocol import (
 WINDOW_NAME = "Living Room Window"
 WINDOW_ADDRESS = "AA:BB:CC:DD:EE:FF"
 ROTATED_ADDRESS = "11:22:33:44:55:66"
+SECOND_WINDOW_NAME = "Bedroom Window"
+SECOND_WINDOW_ADDRESS = "99:88:77:66:55:44"
+VIEW_ID = "LAT2_IUOV6NFQ"
+VIEW_REVISION = "7206c70d"
 
 
 def make_service_info(
@@ -53,11 +58,18 @@ def make_service_info(
 class FakeBleakClient:
     """Minimal in-memory GATT peripheral standing in for a window."""
 
-    def __init__(self, address: str = WINDOW_ADDRESS, power: bool = True) -> None:
+    def __init__(
+        self,
+        address: str = WINDOW_ADDRESS,
+        power: bool = True,
+        view_id: bool = True,
+    ) -> None:
         self.address = address
         self.connected = True
         self.values: dict[str, bytes] = {
-            IDENTITY_UUID: b"device-uuid,Living Room",
+            # Two configured windows have to look like two devices, and the
+            # device UUID is what the integration keys the device registry on.
+            IDENTITY_UUID: f"device-uuid-{address},Living Room".encode(),
             PANORAMA_ROLE_UUID: b"N",
             VIEW_TITLE_UUID: b"Kyoto",
             VIEW_IMAGE_UUID: b"https://example.invalid/view.jpg",
@@ -66,10 +78,16 @@ class FakeBleakClient:
             QUICK_SETTINGS_UUID: json.dumps(
                 {
                     "ScreenBrightness": {"min": 1, "max": 10, "value": 6},
+                    "CurrentDecoration": {"min": 0, "max": 19, "value": 3},
+                    "SoundscapeLayer": {"min": 0, "max": 5, "value": 2},
                     "WidgetsVisible": True,
                 }
             ).encode(),
         }
+        # No window is confirmed to implement the view-id characteristic, so
+        # the fake can be built either way.
+        if view_id:
+            self.values[VIEW_ID_UUID] = f"{VIEW_ID}/{VIEW_REVISION}".encode()
         self.writes: list[tuple[str, bytes]] = []
         self.notifications: dict[str, Callable[[Any, bytearray], None]] = {}
 
@@ -83,8 +101,17 @@ class FakeBleakClient:
         """Return every remote-control command written so far."""
         return [data for uuid, data in self.writes if uuid == COMMAND_UUID]
 
+    @property
+    def settings_writes(self) -> list[bytes]:
+        """Return every quick-setting document written so far."""
+        return [data for uuid, data in self.writes if uuid == QUICK_SETTINGS_UUID]
+
     async def read_gatt_char(self, char_specifier: str) -> bytearray:
-        """Return the stored characteristic value."""
+        """Return the stored characteristic value.
+
+        A characteristic the window does not implement is missing rather than
+        empty, which is what a real read of one raises on.
+        """
         return bytearray(self.values[char_specifier])
 
     async def write_gatt_char(
@@ -122,11 +149,18 @@ class FakeBluetooth:
         self.callbacks: list[Callable[..., None]] = []
         self.unregister_calls = 0
         self.connect_failure: Exception | None = None
+        self.view_id_supported = True
 
     @property
     def client(self) -> FakeBleakClient:
         """Return the most recently established connection."""
         return self.clients[-1]
+
+    def client_at(self, address: str) -> FakeBleakClient:
+        """Return the connection established to one particular window."""
+        return next(
+            client for client in reversed(self.clients) if client.address == address
+        )
 
     def discovered_service_info(
         self, hass: HomeAssistant, connectable: bool = True
@@ -171,5 +205,7 @@ class FakeBluetooth:
         del client_class, name, kwargs
         if self.connect_failure is not None:
             raise self.connect_failure
-        self.clients.append(FakeBleakClient(address=device.address))
+        self.clients.append(
+            FakeBleakClient(address=device.address, view_id=self.view_id_supported)
+        )
         return self.clients[-1]

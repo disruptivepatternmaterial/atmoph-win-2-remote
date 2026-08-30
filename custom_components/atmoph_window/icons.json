@@ -20,7 +20,12 @@
       "soundscape_volume": { "default": "mdi:music-note" }
     },
     "sensor": {
-      "current_view": { "default": "mdi:image-frame" }
+      "current_view": { "default": "mdi:image-frame" },
+      "view_id": { "default": "mdi:identifier" }
     }
+  },
+  "services": {
+    "send_command": { "service": "mdi:remote" },
+    "set_setting": { "service": "mdi:tune-vertical" }
   }
 }

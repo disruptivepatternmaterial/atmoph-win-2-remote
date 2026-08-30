@@ -1,0 +1,60 @@
+# The option lists mirror `COMMANDS` and `SETTING_KEYS` in protocol.py. They
+# are only what the picker offers: the handlers validate independently, so a
+# YAML automation cannot reach the window with an unverified token either.
+#
+# The target carries an entity filter and no device filter, which is what
+# Home Assistant allows here. Picking a device or an area still works, because
+# the target picker resolves both to the entities underneath them.
+
+send_command:
+  target:
+    entity:
+      integration: atmoph_window
+  fields:
+    command:
+      required: true
+      example: menu
+      selector:
+        select:
+          options:
+            - back
+            - connect_notify
+            - double_tap
+            - down
+            - left
+            - menu
+            - next_view
+            - previous_view
+            - quick_menu
+            - right
+            - search
+            - sleep_toggle
+            - tap
+            - up
+            - views
+
+set_setting:
+  target:
+    entity:
+      integration: atmoph_window
+  fields:
+    setting:
+      required: true
+      example: CurrentDecoration
+      selector:
+        select:
+          options:
+            - CurrentDecoration
+            - DailyRoutineEnable
+            - LandscapeVolumeLevel
+            - LedBrightness
+            - ScreenBrightness
+            - SoundOnly
+            - SoundscapeLayer
+            - SoundscapeVolumeLevel
+            - WidgetsVisible
+    value:
+      required: true
+      example: 6
+      selector:
+        text:

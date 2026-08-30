@@ -17,6 +17,10 @@ VIEW_TITLE_UUID: Final = "1d862803-b301-4548-bece-1f1ab61881b8"
 VIEW_IMAGE_UUID: Final = "99cd2547-0640-485c-9996-e0a2b384a6f2"
 VIEW_LOCATION_UUID: Final = "275ddae2-4c69-4638-97d4-d5ba8e9e05d1"
 FOCUSING_VIEW_UUID: Final = "3afad096-8cb5-4cb7-a8b4-c7dca3e41b94"
+# Declared in the app's `AtmophBLEUUID` and never bound by it, so no window is
+# known to answer a read of it. Everything the integration does with it has to
+# survive the characteristic being absent.
+VIEW_ID_UUID: Final = "03cffbfe-b23a-4c8f-bf57-9591b4d59119"
 COMMAND_UUID: Final = "d4393824-471f-4799-ab74-28879878a4e7"
 TEXT_INPUT_UUID: Final = "73de7799-b573-46f3-99fd-c6a7a8fc2fde"
 QUICK_SETTINGS_UUID: Final = "530bcd10-f723-4203-8222-0e135022d394"
@@ -88,6 +92,10 @@ class AtmophState:
     view_title: str | None = None
     view_image_url: str | None = None
     view_location: str | None = None
+    view_id: str | None = None
+    view_revision: str | None = None
+    # None until a read has been attempted, then whether the window answered.
+    view_id_supported: bool | None = None
     power: bool | None = None
     quick_settings: dict[str, object] = field(default_factory=dict)
 
@@ -96,6 +104,17 @@ class AtmophState:
         parts = decode_text(payload).split(",", 1)
         self.device_uuid = parts[0] or None
         self.name = parts[1] if len(parts) > 1 and parts[1] else None
+
+    def apply_view_id(self, payload: bytes) -> None:
+        """Parse the `<view-id>/<revision>` pair identifying the current view.
+
+        The revision is the second half of the thumbnail URL path and changes
+        when Atmoph re-renders a view, so the two halves are kept apart: only
+        the id is a stable identity to match an automation against.
+        """
+        identifier, _, revision = decode_text(payload).partition("/")
+        self.view_id = identifier or None
+        self.view_revision = revision or None
 
     def apply_power(self, payload: bytes) -> None:
         """Parse a boolean power notification."""

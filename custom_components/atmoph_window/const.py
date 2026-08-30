@@ -10,3 +10,19 @@ CONF_ADVERTISED_NAME: Final = "advertised_name"
 ATTR_LOCATION: Final = "location"
 ATTR_IMAGE_URL: Final = "image_url"
 ATTR_PANORAMA_ROLE: Final = "panorama_role"
+ATTR_REVISION: Final = "revision"
+
+SERVICE_SEND_COMMAND: Final = "send_command"
+SERVICE_SET_SETTING: Final = "set_setting"
+
+ATTR_COMMAND: Final = "command"
+ATTR_SETTING: Final = "setting"
+ATTR_VALUE: Final = "value"
+ATTR_REVISION: Final = "revision"
+
+ATTR_COMMAND: Final = "command"
+ATTR_SETTING: Final = "setting"
+ATTR_VALUE: Final = "value"
+
+SERVICE_SEND_COMMAND: Final = "send_command"
+SERVICE_SET_SETTING: Final = "set_setting"

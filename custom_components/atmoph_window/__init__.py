@@ -3,9 +3,13 @@
 from homeassistant.components import bluetooth
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers.typing import ConfigType
 
+from .const import DOMAIN
 from .coordinator import AtmophConfigEntry, AtmophCoordinator
 from .protocol import SERVICE_UUID
+from .services import async_setup_services
 
 PLATFORMS = [
     Platform.BUTTON,
@@ -13,6 +17,15 @@ PLATFORMS = [
     Platform.SENSOR,
     Platform.SWITCH,
 ]
+
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+
+
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
+    """Register the services, which are shared by every configured window."""
+    del config
+    async_setup_services(hass)
+    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: AtmophConfigEntry) -> bool:
