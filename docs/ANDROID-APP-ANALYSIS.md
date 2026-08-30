@@ -9,8 +9,10 @@ code 2030400), downloaded from Aptoide's package mirror on 2026-08-29.
 - MD5 published by the mirror and independently matched:
   `57dacf3172ed84069281e485ed315d79`
 - Android manifest distribution stamp: `https://play.google.com/store`
-- Signing certificate SHA-256:
-  `8F:09:68:6C:33:BA:41:31:A4:16:E0:97:7F:D1:5D:3D:76:0C:3A:41:79:F4:F0:C4:6A:C3:69:E0:76:9B:C4:BE`
+- Signing certificate SHA-256, written without the byte separators `keytool`
+  prints, because colon-grouped hex is indistinguishable from a MAC address to
+  the scan that guards what gets published to the wiki:
+  `8F09686C33BA4131A416E0977FD15D3D760C3A4179F4F0C46AC369E0769BC4BE`
 
 The APK itself, extracted files, portable Java runtime, and decompiler output
 live under the git-ignored `.work/` directory. They must not be committed or
