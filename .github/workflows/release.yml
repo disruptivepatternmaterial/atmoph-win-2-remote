@@ -45,9 +45,16 @@ jobs:
           cd "${{ github.workspace }}"
           unzip -l atmoph_window.zip
 
-      - name: Attach the asset to the release
+      # Pushing a tag fires this before any release object exists, so creating
+      # the release has to be part of the job rather than a prerequisite of it.
+      - name: Publish the release with the asset
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           tag="${{ inputs.tag || github.ref_name }}"
-          gh release upload "$tag" atmoph_window.zip --clobber
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" atmoph_window.zip --clobber
+          else
+            gh release create "$tag" atmoph_window.zip \
+              --title "$tag" --generate-notes
+          fi
