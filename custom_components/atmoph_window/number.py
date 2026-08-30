@@ -7,11 +7,12 @@ from homeassistant.components.number import (
     NumberEntityDescription,
     NumberMode,
 )
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .coordinator import AtmophCoordinator
+from .const import DOMAIN
+from .coordinator import AtmophConfigEntry, AtmophCoordinator
 from .entity import AtmophEntity
 from .protocol import Level
 
@@ -28,36 +29,32 @@ NUMBERS = (
         key="landscape_volume",
         translation_key="landscape_volume",
         setting_key="LandscapeVolumeLevel",
-        icon="mdi:volume-high",
     ),
     AtmophNumberDescription(
         key="soundscape_volume",
         translation_key="soundscape_volume",
         setting_key="SoundscapeVolumeLevel",
-        icon="mdi:music-note",
     ),
     AtmophNumberDescription(
         key="screen_brightness",
         translation_key="screen_brightness",
         setting_key="ScreenBrightness",
-        icon="mdi:brightness-6",
     ),
     AtmophNumberDescription(
         key="led_brightness",
         translation_key="led_brightness",
         setting_key="LedBrightness",
-        icon="mdi:led-on",
     ),
 )
 
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: AtmophConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up number entities."""
-    coordinator: AtmophCoordinator = entry.runtime_data
+    coordinator = entry.runtime_data
     async_add_entities(
         AtmophNumber(coordinator, description) for description in NUMBERS
     )
@@ -111,8 +108,21 @@ class AtmophNumber(AtmophEntity, NumberEntity):
         """Write a numeric setting."""
         level = self._level
         integer = round(value)
-        if level is None or not level.minimum <= integer <= level.maximum:
-            raise ValueError(f"Value {integer} is outside the window's reported range")
+        if level is None:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="setting_not_reported",
+            )
+        if not level.minimum <= integer <= level.maximum:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="value_out_of_range",
+                translation_placeholders={
+                    "value": str(integer),
+                    "minimum": str(level.minimum),
+                    "maximum": str(level.maximum),
+                },
+            )
         await self.coordinator.async_set_setting(
             self.entity_description.setting_key, integer
         )

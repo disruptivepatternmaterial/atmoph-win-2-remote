@@ -9,7 +9,10 @@ from typing import Any
 from bleak.backends.device import BLEDevice
 from bleak_retry_connector import BleakClientWithServiceCache, establish_connection
 from homeassistant.components import bluetooth
-from homeassistant.components.bluetooth import BluetoothServiceInfoBleak
+from homeassistant.components.bluetooth import (
+    BluetoothChange,
+    BluetoothServiceInfoBleak,
+)
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
@@ -20,18 +23,22 @@ from .protocol import SERVICE_UUID, AtmophState
 
 _LOGGER = logging.getLogger(__name__)
 
+type AtmophConfigEntry = ConfigEntry[AtmophCoordinator]
+
 
 class AtmophCoordinator(DataUpdateCoordinator[AtmophState]):
     """Resolve rotating addresses and maintain one BLE connection."""
 
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+    config_entry: AtmophConfigEntry
+
+    def __init__(self, hass: HomeAssistant, entry: AtmophConfigEntry) -> None:
         super().__init__(
             hass,
             _LOGGER,
+            config_entry=entry,
             name=f"{DOMAIN}-{entry.entry_id}",
             update_interval=timedelta(seconds=DEFAULT_UPDATE_INTERVAL),
         )
-        self.entry = entry
         self.advertised_name = entry.data[CONF_ADVERTISED_NAME]
         self._last_address: str | None = entry.data.get("address")
         self._bleak: Any | None = None
@@ -39,7 +46,7 @@ class AtmophCoordinator(DataUpdateCoordinator[AtmophState]):
 
     @callback
     def async_handle_advertisement(
-        self, service_info: BluetoothServiceInfoBleak, change: Any
+        self, service_info: BluetoothServiceInfoBleak, change: BluetoothChange
     ) -> None:
         """Follow the stable advertised name across address rotations."""
         del change
@@ -47,7 +54,7 @@ class AtmophCoordinator(DataUpdateCoordinator[AtmophState]):
             return
         self._last_address = service_info.address
         if self._client is None or not self._client.is_connected:
-            self.hass.async_create_task(self.async_request_refresh())
+            self.config_entry.async_create_task(self.hass, self.async_request_refresh())
 
     async def _async_update_data(self) -> AtmophState:
         try:
@@ -75,11 +82,12 @@ class AtmophCoordinator(DataUpdateCoordinator[AtmophState]):
         """Write a quick setting."""
         client = await self._async_ensure_client()
         await client.set_setting(key, value)
-        client.state.quick_settings[key] = value
+        client.state.apply_setting_write(key, value)
         self.async_set_updated_data(client.state)
 
     async def async_shutdown(self) -> None:
-        """Release the BLE connection."""
+        """Cancel scheduled refreshes and release the BLE connection."""
+        await super().async_shutdown()
         await self._async_disconnect()
 
     async def _async_ensure_client(self) -> AtmophClient:
@@ -119,7 +127,10 @@ class AtmophCoordinator(DataUpdateCoordinator[AtmophState]):
             )
         return None
 
-    @callback
+    # Bleak delivers notifications and the disconnect callback from whichever
+    # thread its backend runs on, and Home Assistant refuses to write entity
+    # state off the event loop. Both hops therefore go through the loop, which
+    # is what `hass.add_job` does for a `@callback` target.
     def _handle_state(self, state: AtmophState) -> None:
         self.hass.loop.call_soon_threadsafe(self.async_set_updated_data, state)
 

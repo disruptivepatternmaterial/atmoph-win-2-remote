@@ -94,6 +94,25 @@ def test_state_parses_identity_power_and_levels() -> None:
     assert level == Level(minimum=1, maximum=10, value=6)
 
 
+def test_local_write_keeps_the_reported_bounds() -> None:
+    """A level is written as a bare value but must stay a bounded object."""
+    state = AtmophState()
+    state.apply_quick_settings(
+        {
+            "ScreenBrightness": {"min": 1, "max": 10, "value": 6},
+            "WidgetsVisible": True,
+        }
+    )
+
+    state.apply_setting_write("ScreenBrightness", 9)
+    state.apply_setting_write("WidgetsVisible", False)
+
+    assert Level.from_wire(state.quick_settings["ScreenBrightness"]) == Level(
+        minimum=1, maximum=10, value=9
+    )
+    assert state.quick_settings["WidgetsVisible"] is False
+
+
 def test_invalid_power_payload_is_rejected() -> None:
     state = AtmophState()
     with pytest.raises(ValueError, match="Unexpected power payload"):

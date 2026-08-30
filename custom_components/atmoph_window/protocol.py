@@ -108,6 +108,19 @@ class AtmophState:
         """Merge a complete quick-settings document."""
         self.quick_settings.update(payload)
 
+    def apply_setting_write(self, name: str, value: bool | int | str) -> None:
+        """Record a value written locally until the window reports it back.
+
+        A level is reported as an object carrying the bounds alongside the
+        value, but written as the bare value. Storing what was written would
+        drop the bounds and leave the setting looking unreported.
+        """
+        current = self.quick_settings.get(name)
+        if isinstance(current, dict) and "value" in current:
+            self.quick_settings[name] = {**current, "value": value}
+        else:
+            self.quick_settings[name] = value
+
 
 class JsonObjectStream:
     """Reassemble one or more UTF-8 JSON objects split across BLE packets."""

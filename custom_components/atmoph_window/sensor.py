@@ -1,22 +1,21 @@
 """Sensor entities for Atmoph Window."""
 
 from homeassistant.components.sensor import SensorEntity
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .const import ATTR_IMAGE_URL, ATTR_LOCATION, ATTR_PANORAMA_ROLE
-from .coordinator import AtmophCoordinator
+from .coordinator import AtmophConfigEntry, AtmophCoordinator
 from .entity import AtmophEntity
 
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: AtmophConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up Atmoph sensors."""
-    coordinator: AtmophCoordinator = entry.runtime_data
+    coordinator = entry.runtime_data
     async_add_entities([AtmophCurrentViewSensor(coordinator)])
 
 
@@ -24,7 +23,6 @@ class AtmophCurrentViewSensor(AtmophEntity, SensorEntity):
     """Current scenery shown on the window."""
 
     _attr_translation_key = "current_view"
-    _attr_icon = "mdi:image-frame"
 
     def __init__(self, coordinator: AtmophCoordinator) -> None:
         super().__init__(coordinator, "current_view")

@@ -1,47 +1,34 @@
 """Remote-control buttons for Atmoph Window."""
 
 from homeassistant.components.button import ButtonEntity, ButtonEntityDescription
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .coordinator import AtmophCoordinator
+from .coordinator import AtmophConfigEntry, AtmophCoordinator
 from .entity import AtmophEntity
 
 BUTTONS = (
-    ButtonEntityDescription(
-        key="previous_view", translation_key="previous_view", icon="mdi:skip-previous"
-    ),
-    ButtonEntityDescription(
-        key="next_view", translation_key="next_view", icon="mdi:skip-next"
-    ),
-    ButtonEntityDescription(key="menu", translation_key="menu", icon="mdi:menu"),
-    ButtonEntityDescription(
-        key="quick_menu", translation_key="quick_menu", icon="mdi:tune"
-    ),
-    ButtonEntityDescription(
-        key="views", translation_key="views", icon="mdi:image-multiple"
-    ),
-    ButtonEntityDescription(key="back", translation_key="back", icon="mdi:arrow-left"),
-    ButtonEntityDescription(key="up", translation_key="up", icon="mdi:arrow-up"),
-    ButtonEntityDescription(key="down", translation_key="down", icon="mdi:arrow-down"),
-    ButtonEntityDescription(
-        key="left", translation_key="left", icon="mdi:chevron-left"
-    ),
-    ButtonEntityDescription(
-        key="right", translation_key="right", icon="mdi:chevron-right"
-    ),
-    ButtonEntityDescription(key="tap", translation_key="tap", icon="mdi:gesture-tap"),
+    ButtonEntityDescription(key="previous_view", translation_key="previous_view"),
+    ButtonEntityDescription(key="next_view", translation_key="next_view"),
+    ButtonEntityDescription(key="menu", translation_key="menu"),
+    ButtonEntityDescription(key="quick_menu", translation_key="quick_menu"),
+    ButtonEntityDescription(key="views", translation_key="views"),
+    ButtonEntityDescription(key="back", translation_key="back"),
+    ButtonEntityDescription(key="up", translation_key="up"),
+    ButtonEntityDescription(key="down", translation_key="down"),
+    ButtonEntityDescription(key="left", translation_key="left"),
+    ButtonEntityDescription(key="right", translation_key="right"),
+    ButtonEntityDescription(key="tap", translation_key="tap"),
 )
 
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: AtmophConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up remote buttons."""
-    coordinator: AtmophCoordinator = entry.runtime_data
+    coordinator = entry.runtime_data
     async_add_entities(
         AtmophButton(coordinator, description) for description in BUTTONS
     )

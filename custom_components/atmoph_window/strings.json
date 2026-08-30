@@ -18,6 +18,14 @@
       "no_devices_found": "No connectable Atmoph Window is currently visible."
     }
   },
+  "exceptions": {
+    "setting_not_reported": {
+      "message": "The window has not reported a range for this setting yet."
+    },
+    "value_out_of_range": {
+      "message": "{value} is outside the range the window reports for this setting ({minimum} to {maximum})."
+    }
+  },
   "entity": {
     "button": {
       "back": { "name": "Back" },

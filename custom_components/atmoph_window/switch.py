@@ -3,11 +3,10 @@
 from dataclasses import dataclass
 
 from homeassistant.components.switch import SwitchEntity, SwitchEntityDescription
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .coordinator import AtmophCoordinator
+from .coordinator import AtmophConfigEntry, AtmophCoordinator
 from .entity import AtmophEntity
 
 
@@ -39,11 +38,11 @@ SETTING_SWITCHES = (
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: AtmophConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up switches."""
-    coordinator: AtmophCoordinator = entry.runtime_data
+    coordinator = entry.runtime_data
     async_add_entities(
         [
             AtmophDisplaySwitch(coordinator),

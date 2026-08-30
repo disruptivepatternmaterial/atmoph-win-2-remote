@@ -1,0 +1,26 @@
+{
+  "entity": {
+    "button": {
+      "back": { "default": "mdi:arrow-left" },
+      "down": { "default": "mdi:arrow-down" },
+      "left": { "default": "mdi:chevron-left" },
+      "menu": { "default": "mdi:menu" },
+      "next_view": { "default": "mdi:skip-next" },
+      "previous_view": { "default": "mdi:skip-previous" },
+      "quick_menu": { "default": "mdi:tune" },
+      "right": { "default": "mdi:chevron-right" },
+      "tap": { "default": "mdi:gesture-tap" },
+      "up": { "default": "mdi:arrow-up" },
+      "views": { "default": "mdi:image-multiple" }
+    },
+    "number": {
+      "landscape_volume": { "default": "mdi:volume-high" },
+      "led_brightness": { "default": "mdi:led-on" },
+      "screen_brightness": { "default": "mdi:brightness-6" },
+      "soundscape_volume": { "default": "mdi:music-note" }
+    },
+    "sensor": {
+      "current_view": { "default": "mdi:image-frame" }
+    }
+  }
+}
