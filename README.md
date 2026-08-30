@@ -87,7 +87,7 @@ attempt.
 | A window seen without a name is missed | The name is only in the scan response; the stable ID needs a connection first ([#8](https://github.com/disruptivepatternmaterial/atmoph-win-2-remote/issues/8)) |
 | No text entry | The app encrypts typed text with a key hardcoded in the APK. Not needed for control, and not reproduced here |
 | No zoom | The pinch gesture maps poorly to a Home Assistant entity |
-| Not in the HACS default store | Needs a brand assets submission upstream ([#10](https://github.com/disruptivepatternmaterial/atmoph-win-2-remote/issues/10)) |
+| The device page shows a generic puzzle piece | Home Assistant loads icons from `brands.home-assistant.io`, never from the integration folder, so it needs an upstream submission ([#10](https://github.com/disruptivepatternmaterial/atmoph-win-2-remote/issues/10)) |
 
 ## How the protocol was recovered
 

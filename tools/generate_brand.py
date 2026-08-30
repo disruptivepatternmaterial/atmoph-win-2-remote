@@ -1,4 +1,17 @@
-"""Generate the original HACS brand icon without external image dependencies."""
+"""Generate the original HACS brand icons without external image dependencies.
+
+The output path is not a matter of taste. `hacs/action` looks for
+`custom_components/<domain>/brand/icon.png` — `brand` singular, inside the
+integration directory — and only falls back to the home-assistant/brands
+repository when that is missing. Its own log says so:
+
+    The repository does not contain brands assets at
+    custom_components/atmoph_window/brand/icon.png. Falling back to checking
+    the brands repository.
+
+A root-level `brands/` directory, which is what the convention looks like from
+the outside, is never read.
+"""
 
 from __future__ import annotations
 
@@ -7,6 +20,7 @@ import zlib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+BRAND_DIR = ROOT / "custom_components" / "atmoph_window" / "brand"
 
 
 def _png(path: Path, size: int) -> None:
@@ -72,5 +86,9 @@ def _png(path: Path, size: int) -> None:
 
 
 if __name__ == "__main__":
-    _png(ROOT / "brands" / "icon.png", 256)
-    _png(ROOT / "brands" / "icon@2x.png", 512)
+    _png(BRAND_DIR / "icon.png", 256)
+    _png(BRAND_DIR / "icon@2x.png", 512)
+    # home-assistant/brands wants a logo too; a square logo is acceptable when
+    # the mark has no wide form, and HACS only requires the icon.
+    _png(BRAND_DIR / "logo.png", 256)
+    _png(BRAND_DIR / "logo@2x.png", 512)
