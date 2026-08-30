@@ -7,9 +7,13 @@ requiring Atmoph cloud access.
 ## Status
 
 The Android app protocol has been statically verified against Atmoph Window 2
-app 2.3.4 (`com.atmoph.remote`, version code 2030400). The offline protocol
-tests pass against a simulated peripheral. Hardware verification against a
-Window 2 is still required before the first release.
+app 2.3.4 (`com.atmoph.remote`, version code 2030400), and the offline protocol
+tests pass against a simulated peripheral.
+
+Nothing here has been confirmed against a real Window 2 yet. `v0.1.0` is
+published so it can be installed and exercised on hardware, which is the only
+way that confirmation happens — expect to find things. Progress is tracked in
+[issue #5](https://github.com/disruptivepatternmaterial/atmoph-win-2-remote/issues/5).
 
 ## Supported controls
 
@@ -22,7 +26,17 @@ Window 2 is still required before the first release.
 - Widgets, daily routine, and sound-only switches
 - Home Assistant Bluetooth adapters and compatible active Bluetooth proxies
 
-## Install for development
+## Install
+
+### HACS
+
+Add this repository as a custom repository with category **Integration**, then
+download it. `hacs.json` sets `zip_release`, so HACS installs the
+`atmoph_window.zip` asset attached to a release and will not install from the
+default branch — if a download fails, check that the release you are pointed at
+actually carries that asset.
+
+### Manually
 
 1. Copy `custom_components/atmoph_window` into the Home Assistant `custom_components`
    directory.
