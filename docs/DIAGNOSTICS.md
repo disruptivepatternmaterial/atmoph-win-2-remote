@@ -93,9 +93,13 @@ a write, so it is opt-in. Nothing else is written without `--led-write` or
 ### Comparing a broken unit against a working one
 
 ```sh
-python3 tools/atmoph_diag.py --normalize dump --max 2 --out dumps
-diff dumps/*.txt
+python3 tools/atmoph_diag.py --normalize dump --max 2 --out .work/dumps
+diff .work/dumps/*.txt
 ```
+
+`.work/` is git-ignored, which is where dumps belong: they carry device
+identifiers even after normalization masks them from the report body, because
+the filename is derived from the real device UUID.
 
 `--normalize` masks everything that necessarily differs between two units or
 two runs: the rotating address, signal strength, timestamps, the negotiated
