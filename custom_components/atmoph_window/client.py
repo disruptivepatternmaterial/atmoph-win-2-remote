@@ -15,6 +15,7 @@ from .protocol import (
     PANORAMA_ROLE_UUID,
     POWER_UUID,
     QUICK_SETTINGS_UUID,
+    VIEW_ID_UUID,
     VIEW_IMAGE_UUID,
     VIEW_LOCATION_UUID,
     VIEW_TITLE_UUID,
@@ -66,6 +67,11 @@ class AtmophClient:
         POWER_UUID,
     )
 
+    # The app declares this characteristic without ever binding it, and the
+    # only report of a window answering it comes from different hardware, so
+    # every interaction with it is best-effort.
+    _OPTIONAL_NOTIFY_UUIDS = (VIEW_ID_UUID,)
+
     def __init__(
         self,
         client: BleakClientLike,
@@ -86,13 +92,16 @@ class AtmophClient:
         """Subscribe to state changes and perform the app's initial reads."""
         for uuid in self._NOTIFY_UUIDS:
             await self._client.start_notify(uuid, self._notification)
+        for uuid in self._OPTIONAL_NOTIFY_UUIDS:
+            with contextlib.suppress(Exception):
+                await self._client.start_notify(uuid, self._notification)
         await self.refresh()
         await self.send_command("connect_notify")
         return self.state
 
     async def close(self) -> None:
         """Stop notifications before the owning coordinator disconnects."""
-        for uuid in self._NOTIFY_UUIDS:
+        for uuid in self._NOTIFY_UUIDS + self._OPTIONAL_NOTIFY_UUIDS:
             with contextlib.suppress(Exception):
                 await self._client.stop_notify(uuid)
 
@@ -110,8 +119,26 @@ class AtmophClient:
                 settings = json.loads(raw_settings)
                 if isinstance(settings, dict):
                     self.state.apply_quick_settings(settings)
+            await self._read_view_id()
         self._publish()
         return self.state
+
+    async def _read_view_id(self) -> None:
+        """Read the view id, treating an absent characteristic as normal.
+
+        A window that does not implement it must still update, so the first
+        failure stops the attempt for the life of the connection rather than
+        raising an error the coordinator would report as an update failure.
+        """
+        if self.state.view_id_supported is False:
+            return
+        try:
+            payload = await self._read(VIEW_ID_UUID)
+        except Exception:
+            self.state.view_id_supported = False
+            return
+        self.state.view_id_supported = True
+        self.state.apply_view_id(payload)
 
     async def send_command(self, name: str) -> None:
         """Send one verified remote-control command."""
@@ -173,6 +200,9 @@ class AtmophClient:
                 self.state.view_image_url = decode_text(payload)
             elif uuid == VIEW_LOCATION_UUID:
                 self.state.view_location = decode_text(payload)
+            elif uuid == VIEW_ID_UUID:
+                self.state.view_id_supported = True
+                self.state.apply_view_id(payload)
             elif uuid == PANORAMA_ROLE_UUID:
                 self.state.panorama_role = decode_text(payload)
             elif uuid == QUICK_SETTINGS_UUID:

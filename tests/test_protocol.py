@@ -17,6 +17,7 @@ from custom_components.atmoph_window.protocol import (
     PANORAMA_ROLE_UUID,
     POWER_UUID,
     QUICK_SETTINGS_UUID,
+    VIEW_ID_UUID,
     VIEW_IMAGE_UUID,
     VIEW_LOCATION_UUID,
     VIEW_TITLE_UUID,
@@ -43,6 +44,12 @@ def test_commands_match_android_app() -> None:
     assert encode_command("next_view") == b"FW"
     assert encode_command("previous_view") == b"BW"
     assert encode_command("menu") == b"M"
+
+
+def test_commands_cover_the_tokens_that_have_no_entity() -> None:
+    """Double tap and search are reachable only through the command service."""
+    assert encode_command("double_tap") == b"DT"
+    assert encode_command("search") == b"VS"
 
 
 def test_unknown_command_is_rejected() -> None:
@@ -119,12 +126,35 @@ def test_invalid_power_payload_is_rejected() -> None:
         state.apply_power(b"sleeping")
 
 
+def test_view_id_splits_into_a_stable_id_and_a_render_revision() -> None:
+    """The revision moves when Atmoph re-renders a view, so it is kept apart."""
+    state = AtmophState()
+    state.apply_view_id(b"LAT2_IUOV6NFQ/7206c70d")
+    assert state.view_id == "LAT2_IUOV6NFQ"
+    assert state.view_revision == "7206c70d"
+
+
+def test_a_view_id_without_a_revision_is_still_an_id() -> None:
+    """Only one report of this characteristic's format exists, so tolerate both."""
+    state = AtmophState()
+    state.apply_view_id(b"LAT2_IUOV6NFQ")
+    assert state.view_id == "LAT2_IUOV6NFQ"
+    assert state.view_revision is None
+
+
+def test_an_empty_view_id_reports_nothing_rather_than_an_empty_string() -> None:
+    state = AtmophState()
+    state.apply_view_id(b"")
+    assert state.view_id is None
+    assert state.view_revision is None
+
+
 class FakeBleakClient:
     """Minimal in-memory GATT peripheral."""
 
     is_connected = True
 
-    def __init__(self, power: bool = True) -> None:
+    def __init__(self, power: bool = True, view_id: bool = True) -> None:
         self.values: dict[str, bytes] = {
             IDENTITY_UUID: b"device-uuid,Living Room",
             PANORAMA_ROLE_UUID: b"N",
@@ -139,10 +169,16 @@ class FakeBleakClient:
                 }
             ).encode(),
         }
+        # A window that does not implement a characteristic has no entry for
+        # it, so reading one raises, as a real read of an absent one does.
+        if view_id:
+            self.values[VIEW_ID_UUID] = b"LAT2_IUOV6NFQ/7206c70d"
         self.writes: list[tuple[str, bytes, bool]] = []
         self.notifications: dict[str, Callable[[Any, bytearray], None]] = {}
+        self.reads: list[str] = []
 
     async def read_gatt_char(self, char_specifier: str) -> bytearray:
+        self.reads.append(char_specifier)
         return bytearray(self.values[char_specifier])
 
     async def write_gatt_char(
@@ -176,6 +212,83 @@ async def test_initialize_reads_state_and_requests_notifications() -> None:
     assert POWER_UUID in peripheral.notifications
     assert (COMMAND_UUID, b"C", True) in peripheral.writes
     assert updates
+
+
+@pytest.mark.asyncio
+async def test_initialize_reads_and_subscribes_to_the_view_id() -> None:
+    peripheral = FakeBleakClient()
+    client = AtmophClient(peripheral)
+    state = await client.initialize()
+    assert state.view_id_supported is True
+    assert state.view_id == "LAT2_IUOV6NFQ"
+    assert state.view_revision == "7206c70d"
+    assert VIEW_ID_UUID in peripheral.notifications
+
+
+@pytest.mark.asyncio
+async def test_a_missing_view_id_characteristic_does_not_fail_initialization() -> None:
+    """The app never binds this characteristic, so no window need implement it."""
+    peripheral = FakeBleakClient(view_id=False)
+    client = AtmophClient(peripheral)
+    state = await client.initialize()
+
+    assert state.view_id_supported is False
+    assert state.view_id is None
+    # Everything the app does bind still has to arrive.
+    assert state.view_title == "Kyoto"
+    assert state.power is True
+    assert state.quick_settings["WidgetsVisible"] is True
+
+
+@pytest.mark.asyncio
+async def test_a_missing_view_id_characteristic_is_read_only_once() -> None:
+    """Polling a window that lacks it must not raise on every update."""
+    peripheral = FakeBleakClient(view_id=False)
+    client = AtmophClient(peripheral)
+    await client.initialize()
+    peripheral.reads.clear()
+
+    await client.refresh()
+
+    assert VIEW_ID_UUID not in peripheral.reads
+
+
+@pytest.mark.asyncio
+async def test_a_refused_view_id_subscription_leaves_the_value_readable() -> None:
+    """The one report of this characteristic gives it notify; the app's map does not."""
+
+    class NoNotifyPeripheral(FakeBleakClient):
+        """Rejects a subscription to the view id but answers a read of it."""
+
+        async def start_notify(
+            self, char_specifier: str, callback: Callable[[Any, bytearray], None]
+        ) -> None:
+            if char_specifier == VIEW_ID_UUID:
+                raise RuntimeError("Characteristic does not support notifications")
+            await super().start_notify(char_specifier, callback)
+
+    peripheral = NoNotifyPeripheral()
+    client = AtmophClient(peripheral)
+    state = await client.initialize()
+
+    assert VIEW_ID_UUID not in peripheral.notifications
+    assert state.view_id_supported is True
+    assert state.view_id == "LAT2_IUOV6NFQ"
+
+
+@pytest.mark.asyncio
+async def test_a_view_id_notification_updates_the_state() -> None:
+    peripheral = FakeBleakClient()
+    updates: list[AtmophState] = []
+    client = AtmophClient(peripheral, updates.append)
+    await client.initialize()
+
+    peripheral.notifications[VIEW_ID_UUID](
+        VIEW_ID_UUID, bytearray(b"LAT2_ABCDEF12/99ff0011")
+    )
+
+    assert client.state.view_id == "LAT2_ABCDEF12"
+    assert client.state.view_revision == "99ff0011"
 
 
 @pytest.mark.asyncio

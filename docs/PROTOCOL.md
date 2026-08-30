@@ -103,13 +103,35 @@ assigned to a `CasterBleManager` field, so 2.3.4 never reads or writes them.
 
 | Characteristic | Reported value on hardware | Looks like |
 |---|---|---|
-| `03cffbfe-b23a-4c8f-bf57-9591b4d59119` | `LAT2_IUOV6NFQ/7206c70d` | Current view id + revision — the tail of the thumbnail URL, and the only characteristic that actually tracks the view |
+| `03cffbfe-b23a-4c8f-bf57-9591b4d59119` | `LAT2_IUOV6NFQ/7206c70d` | Current view id + revision — the tail of the thumbnail URL, and the only characteristic that actually tracks the view. Read best-effort; see below |
 | `e6f3269f-a0ce-49fa-9c46-8edbc02e0711` | a bare UUID | Device UUID on its own |
 | `2e109d28-1008-4cb6-a7af-1fabb2fa3278` | a device name | Device name on its own |
 | `d78f7085-8a3e-487e-8691-9b672aeea0eb` | — | Write-only, purpose unknown |
 | `bef2f796-7d49-48e1-9da6-f24346e6aaf7` | — | Constructed in `AtmophBLEUUID` and then discarded; never stored, never used. Possibly the original Atmoph Window service. |
 
 `bef2f796-…` appears in our 2.3.4 decompilation and in no published analysis.
+
+#### The view id is the one of these the integration reads
+
+`1d862803-…` carries a view title, which is what a person reads but a poor key
+for an automation: titles repeat across the catalogue and follow the app's
+language. `03cffbfe-…` is the catalogue id, so it is the value worth having.
+
+The evidence for it is uneven and the implementation reflects that. That the
+UUID exists is **App**. That a window answers a read of it, and that the value
+is `<id>/<revision>`, is **Reported** only — 2.3.4 never binds it, so our
+decompilation says nothing about its behaviour, and no AW102 has been checked.
+The integration therefore treats it as optional at every step: the subscription
+may be refused, the read may fail, and the first failure stops it asking again
+for the life of the connection. A window that does not implement it gets no
+view-id sensor at all rather than one stuck unavailable, and setup, the poll,
+and the `current_view` sensor are unaffected. The entity is diagnostic for the
+same reason. See `_read_view_id` in `custom_components/atmoph_window/client.py`
+and [issue #14](https://github.com/disruptivepatternmaterial/atmoph-win-2-remote/issues/14).
+
+The id and the revision are exposed apart because only the id is stable: the
+revision moves when Atmoph re-renders a view, which would break the equality
+check an automation is trying to make.
 
 The app also builds a synthetic in-process GATT table with per-characteristic
 property flags. Because it registers each descriptor under the characteristic's
@@ -174,7 +196,7 @@ prefix or terminator. All tokens are **App**-verified from the
 | Token | App enum | Meaning | HA entity |
 |---|---|---|---|
 | `T` | Tap | Select / confirm | Select button |
-| `DT` | DoubleTap | Double tap | Protocol only |
+| `DT` | DoubleTap | Double tap | `send_command` service |
 | `U` | Up | Navigate up | Up button |
 | `D` | Down | Navigate down | Down button |
 | `L` | Left | Navigate left | Left button |
@@ -185,13 +207,28 @@ prefix or terminator. All tokens are **App**-verified from the
 | `Q` | QuickMenu | Quick menu | Quick menu button |
 | `B` | Back | Back | Back button |
 | `V` | Views | Views screen | Views button |
-| `VS` | Search | Search | Protocol only |
+| `VS` | Search | Search | `send_command` service |
 | `S` | Sleep | Toggle display sleep | Display switch |
 | `C` | ConnectNotify | Request current state | Initialization |
 | `SB` | ScaleBegin | Begin pinch gesture | Not implemented |
 | `SG` | Scaling | Pinch scale factor | Not implemented |
 | `SE` | ScaleEnd | End pinch gesture | Not implemented |
 | `P` | Power | Declared and never sent by the app | Not implemented |
+
+### Every implemented token is reachable, but not all as buttons
+
+`DT` and `VS` are the two implemented tokens with no entity of their own. A
+double tap and a jump to the search screen are one-shot inputs whose result
+depends on what the window is already showing, and search leads to a text field
+this integration deliberately cannot fill, so neither earns a button on a
+dashboard. Both are sent by the `atmoph_window.send_command` service, which
+validates its argument against the same table above and refuses anything not in
+it. That service also covers `S` and `C`, which entities own for other reasons:
+`S` belongs to the display switch because only the switch performs the
+read-and-confirm dance the toggle needs, and `C` runs at connect.
+
+`P`, `SB`, `SG`, and `SE` are not implemented at all, so the service does not
+offer them either.
 
 ### Zoom is the one non-token payload
 
@@ -260,17 +297,29 @@ booleans; levels are objects with device-provided bounds:
 {"ScreenBrightness":{"min":1,"max":10,"value":6}}
 ```
 
-Known keys (**App**, from `QuickMenuSetting`):
+Known keys (**App**, from `QuickMenuSetting`), with how each is exposed:
 
-- `WidgetsVisible`
-- `DailyRoutineEnable`
-- `LandscapeVolumeLevel`
-- `SoundscapeLayer`
-- `SoundscapeVolumeLevel`
-- `ScreenBrightness`
-- `CurrentDecoration`
-- `SoundOnly`
-- `LedBrightness`
+| Key | Shape | HA surface |
+|---|---|---|
+| `WidgetsVisible` | boolean | Switch |
+| `DailyRoutineEnable` | boolean | Switch |
+| `SoundOnly` | boolean | Switch |
+| `LandscapeVolumeLevel` | level | Number |
+| `SoundscapeVolumeLevel` | level | Number |
+| `ScreenBrightness` | level | Number |
+| `LedBrightness` | level | Number |
+| `SoundscapeLayer` | level | `set_setting` service |
+| `CurrentDecoration` | level | `set_setting` service |
+
+`SoundscapeLayer` and `CurrentDecoration` are levels by wire format but choices
+by meaning: neither is a magnitude a slider communicates honestly, and nothing
+recovered from the app names their members, so a `select` would have to invent
+labels. Both stay writable through `atmoph_window.set_setting`, which validates
+the key against the table above and a level against the bounds the window
+itself reported, refusing to write a setting the window has never reported at
+all — there is nothing in the write format to say whether such a key is a
+boolean or a level. See
+[issue #15](https://github.com/disruptivepatternmaterial/atmoph-win-2-remote/issues/15).
 
 ### Bounds are per-device and wider than they look
 
@@ -336,6 +385,10 @@ Nothing here has been checked against an AW102 by this project. Doing so is
 - Confirm whether Window 2 exposes `401f7f45-…` at all, or whether it is
   Window Yo only.
 - Read identity, view metadata, quick settings, and power; record real bounds.
+- Read `03cffbfe-…` and record whether an AW102 answers it at all, whether it
+  notifies, and whether the value really is `<id>/<revision>`. The view-id
+  sensor rests entirely on this and nothing else in the integration does
+  ([issue #14](https://github.com/disruptivepatternmaterial/atmoph-win-2-remote/issues/14)).
 - Send `C` and confirm notifications arrive.
 - Test every implemented command once, with the official app closed.
 - Verify `S` in both directions, then verify the dropped-toggle window by
