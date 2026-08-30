@@ -5,6 +5,9 @@
     "@disruptivepatternmaterial"
   ],
   "config_flow": true,
+  "dependencies": [
+    "bluetooth"
+  ],
   "documentation": "https://github.com/disruptivepatternmaterial/atmoph-win-2-remote",
   "issue_tracker": "https://github.com/disruptivepatternmaterial/atmoph-win-2-remote/issues",
   "integration_type": "device",

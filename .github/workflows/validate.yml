@@ -25,6 +25,11 @@ jobs:
   hacs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # HACS resolves the manifest, hacs.json, topics, and brand assets through
+    # the public GitHub API, so every one of those checks fails on a private
+    # repository for reasons that say nothing about the code. The job switches
+    # itself on when the repository is published. See issue #10.
+    if: github.event.repository.private == false
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: hacs/action@main
