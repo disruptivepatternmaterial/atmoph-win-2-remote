@@ -1,0 +1,6 @@
+# Install at atmoph-win-2-remote/.github/wiki-sync.yml
+# Default branch: main. PRIVATE repo, so its wiki is private too — but the
+# repository is intended to go public, so the network-identifier scan is left
+# on and no private addresses or device identifiers belong in docs/ regardless.
+auto:
+  - glob: 'docs/*.md'

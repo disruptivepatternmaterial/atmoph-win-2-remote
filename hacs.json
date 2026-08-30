@@ -1,0 +1,8 @@
+{
+  "filename": "atmoph_window.zip",
+  "hide_default_branch": true,
+  "homeassistant": "2026.8.0",
+  "name": "Atmoph Window",
+  "render_readme": true,
+  "zip_release": true
+}

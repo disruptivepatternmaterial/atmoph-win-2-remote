@@ -1,0 +1,32 @@
+name: validate
+
+# Structural checks on the integration itself: hassfest validates the manifest
+# and file layout the way Home Assistant does, and the HACS action validates
+# what HACS requires before it will install the repository.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # Both actions track upstream requirements that change without us. A weekly
+    # run surfaces a break before a release does.
+    - cron: '31 5 * * 1'
+  workflow_dispatch:
+
+jobs:
+  hassfest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: home-assistant/actions/hassfest@master
+
+  hacs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: hacs/action@main
+        with:
+          category: integration

@@ -1,0 +1,22 @@
+{
+  "domain": "atmoph_window",
+  "name": "Atmoph Window",
+  "codeowners": [
+    "@disruptivepatternmaterial"
+  ],
+  "config_flow": true,
+  "documentation": "https://github.com/disruptivepatternmaterial/atmoph-win-2-remote",
+  "issue_tracker": "https://github.com/disruptivepatternmaterial/atmoph-win-2-remote/issues",
+  "integration_type": "device",
+  "iot_class": "local_push",
+  "requirements": [
+    "bleak-retry-connector==4.6.3"
+  ],
+  "version": "0.1.0",
+  "bluetooth": [
+    {
+      "service_uuid": "c1e0d952-12f7-4c84-b67d-fc26f55243a0",
+      "connectable": true
+    }
+  ]
+}

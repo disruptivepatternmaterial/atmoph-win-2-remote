@@ -1,0 +1,239 @@
+"""Offline protocol tests."""
+
+from __future__ import annotations
+
+import json
+import sys
+from collections.abc import Callable
+from typing import Any
+
+import pytest
+
+from custom_components.atmoph_window import client as client_module
+from custom_components.atmoph_window.client import AtmophClient
+from custom_components.atmoph_window.protocol import (
+    COMMAND_UUID,
+    IDENTITY_UUID,
+    PANORAMA_ROLE_UUID,
+    POWER_UUID,
+    QUICK_SETTINGS_UUID,
+    VIEW_IMAGE_UUID,
+    VIEW_LOCATION_UUID,
+    VIEW_TITLE_UUID,
+    AtmophState,
+    JsonObjectStream,
+    Level,
+    encode_command,
+    encode_setting,
+)
+
+
+def test_protocol_layer_is_home_assistant_free() -> None:
+    """The wire protocol must stay usable outside Home Assistant.
+
+    Importing the client and protocol modules must not drag in Home
+    Assistant, so the recovered protocol can be reused and tested on its own.
+    """
+    assert "homeassistant" not in sys.modules
+
+
+def test_commands_match_android_app() -> None:
+    """Named controls encode to the app's ASCII tokens."""
+    assert encode_command("sleep_toggle") == b"S"
+    assert encode_command("next_view") == b"FW"
+    assert encode_command("previous_view") == b"BW"
+    assert encode_command("menu") == b"M"
+
+
+def test_unknown_command_is_rejected() -> None:
+    with pytest.raises(ValueError, match="Unknown Atmoph command"):
+        encode_command("factory_reset")
+
+
+def test_setting_is_compact_single_key_json() -> None:
+    assert encode_setting("ScreenBrightness", 6) == b'{"ScreenBrightness":6}'
+    assert encode_setting("WidgetsVisible", True) == b'{"WidgetsVisible":true}'
+
+
+def test_unknown_setting_is_rejected() -> None:
+    with pytest.raises(ValueError, match="Unknown Atmoph setting"):
+        encode_setting("FirmwareUpdate", "url")
+
+
+def test_json_stream_reassembles_and_separates_documents() -> None:
+    stream = JsonObjectStream()
+    assert stream.feed(b'{"ScreenBright') == []
+    assert stream.feed(b'ness":{"min":1,"max":10,') == []
+    documents = stream.feed(b'"value":6}}{"SoundOnly":false}')
+    assert documents == [
+        {"ScreenBrightness": {"min": 1, "max": 10, "value": 6}},
+        {"SoundOnly": False},
+    ]
+
+
+def test_json_stream_recovers_from_prefix_noise() -> None:
+    stream = JsonObjectStream()
+    assert stream.feed(b'noise{"SoundOnly":') == []
+    assert stream.feed(b"true}") == [{"SoundOnly": True}]
+
+
+def test_json_stream_enforces_size_limit() -> None:
+    stream = JsonObjectStream(max_size=8)
+    with pytest.raises(ValueError, match="size limit"):
+        stream.feed(b'{"unfinished":')
+
+
+def test_state_parses_identity_power_and_levels() -> None:
+    state = AtmophState()
+    state.apply_identity(b"device-uuid,Living Room")
+    state.apply_power(b"true")
+    level = Level.from_wire({"min": 1, "max": 10, "value": 6})
+    assert state.device_uuid == "device-uuid"
+    assert state.name == "Living Room"
+    assert state.power is True
+    assert level == Level(minimum=1, maximum=10, value=6)
+
+
+def test_invalid_power_payload_is_rejected() -> None:
+    state = AtmophState()
+    with pytest.raises(ValueError, match="Unexpected power payload"):
+        state.apply_power(b"sleeping")
+
+
+class FakeBleakClient:
+    """Minimal in-memory GATT peripheral."""
+
+    is_connected = True
+
+    def __init__(self, power: bool = True) -> None:
+        self.values: dict[str, bytes] = {
+            IDENTITY_UUID: b"device-uuid,Living Room",
+            PANORAMA_ROLE_UUID: b"N",
+            VIEW_TITLE_UUID: b"Kyoto",
+            VIEW_IMAGE_UUID: b"https://example.invalid/view.jpg",
+            VIEW_LOCATION_UUID: b"Kyoto, Japan",
+            POWER_UUID: b"true" if power else b"false",
+            QUICK_SETTINGS_UUID: json.dumps(
+                {
+                    "ScreenBrightness": {"min": 1, "max": 10, "value": 6},
+                    "WidgetsVisible": True,
+                }
+            ).encode(),
+        }
+        self.writes: list[tuple[str, bytes, bool]] = []
+        self.notifications: dict[str, Callable[[Any, bytearray], None]] = {}
+
+    async def read_gatt_char(self, char_specifier: str) -> bytearray:
+        return bytearray(self.values[char_specifier])
+
+    async def write_gatt_char(
+        self, char_specifier: str, data: bytes, response: bool
+    ) -> None:
+        self.writes.append((char_specifier, data, response))
+        if char_specifier == COMMAND_UUID and data == b"S":
+            self.values[POWER_UUID] = (
+                b"false" if self.values[POWER_UUID] == b"true" else b"true"
+            )
+
+    async def start_notify(
+        self, char_specifier: str, callback: Callable[[Any, bytearray], None]
+    ) -> None:
+        self.notifications[char_specifier] = callback
+
+    async def stop_notify(self, char_specifier: str) -> None:
+        self.notifications.pop(char_specifier, None)
+
+
+@pytest.mark.asyncio
+async def test_initialize_reads_state_and_requests_notifications() -> None:
+    peripheral = FakeBleakClient()
+    updates: list[AtmophState] = []
+    client = AtmophClient(peripheral, updates.append)
+    state = await client.initialize()
+    assert state.name == "Living Room"
+    assert state.view_title == "Kyoto"
+    assert state.power is True
+    assert state.quick_settings["WidgetsVisible"] is True
+    assert POWER_UUID in peripheral.notifications
+    assert (COMMAND_UUID, b"C", True) in peripheral.writes
+    assert updates
+
+
+@pytest.mark.asyncio
+async def test_power_control_is_idempotent_and_confirmed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def no_sleep(delay: float) -> None:
+        del delay
+
+    monkeypatch.setattr(client_module.asyncio, "sleep", no_sleep)
+    peripheral = FakeBleakClient(power=True)
+    client = AtmophClient(peripheral)
+
+    await client.set_power(True)
+    assert peripheral.writes == []
+
+    await client.set_power(False)
+    assert peripheral.writes == [(COMMAND_UUID, b"S", True)]
+    assert client.state.power is False
+
+
+@pytest.mark.asyncio
+async def test_power_control_retries_a_dropped_toggle(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A toggle the window silently discards is sent again, not reported failed."""
+
+    async def no_sleep(delay: float) -> None:
+        del delay
+
+    monkeypatch.setattr(client_module.asyncio, "sleep", no_sleep)
+
+    class DroppingPeripheral(FakeBleakClient):
+        """Ignores the first toggle, as the window does when toggled too fast."""
+
+        def __init__(self) -> None:
+            super().__init__(power=True)
+            self._dropped = False
+
+        async def write_gatt_char(
+            self, char_specifier: str, data: bytes, response: bool
+        ) -> None:
+            if char_specifier == COMMAND_UUID and data == b"S" and not self._dropped:
+                self._dropped = True
+                self.writes.append((char_specifier, data, response))
+                return
+            await super().write_gatt_char(char_specifier, data, response)
+
+    peripheral = DroppingPeripheral()
+    client = AtmophClient(peripheral)
+
+    await client.set_power(False)
+
+    toggles = [w for w in peripheral.writes if w[1] == b"S"]
+    assert len(toggles) == 2
+    assert client.state.power is False
+
+
+@pytest.mark.asyncio
+async def test_power_control_gives_up_when_never_confirmed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An unresponsive window raises rather than reporting a state it never reached."""
+
+    async def no_sleep(delay: float) -> None:
+        del delay
+
+    monkeypatch.setattr(client_module.asyncio, "sleep", no_sleep)
+
+    class UnresponsivePeripheral(FakeBleakClient):
+        """Accepts every write at the ATT layer and changes nothing."""
+
+        async def write_gatt_char(
+            self, char_specifier: str, data: bytes, response: bool
+        ) -> None:
+            self.writes.append((char_specifier, data, response))
+
+    client = AtmophClient(UnresponsivePeripheral())
+    with pytest.raises(TimeoutError, match="did not confirm"):
+        await client.set_power(False)

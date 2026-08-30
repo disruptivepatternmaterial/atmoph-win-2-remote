@@ -1,0 +1,21 @@
+# Reverse-engineering inputs and generated output
+.work/
+*.apk
+*.apks
+*.xapk
+*.aab
+decompiled/
+extracted/
+
+# Python
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+*.py[cod]
+
+# Editors and operating systems
+.DS_Store
+.idea/
+.vscode/

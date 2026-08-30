@@ -1,0 +1,51 @@
+{
+  "config": {
+    "step": {
+      "confirm": {
+        "title": "Add {name}",
+        "description": "Set up {name} for local Bluetooth control."
+      },
+      "user": {
+        "title": "Select an Atmoph Window",
+        "data": {
+          "advertised_name": "Window"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "This window is already configured.",
+      "cannot_identify": "The advertisement did not contain a stable window name.",
+      "no_devices_found": "No connectable Atmoph Window is currently visible."
+    }
+  },
+  "entity": {
+    "button": {
+      "back": { "name": "Back" },
+      "down": { "name": "Down" },
+      "left": { "name": "Left" },
+      "menu": { "name": "Menu" },
+      "next_view": { "name": "Next view" },
+      "previous_view": { "name": "Previous view" },
+      "quick_menu": { "name": "Quick menu" },
+      "right": { "name": "Right" },
+      "tap": { "name": "Select" },
+      "up": { "name": "Up" },
+      "views": { "name": "Views" }
+    },
+    "number": {
+      "landscape_volume": { "name": "Landscape volume" },
+      "led_brightness": { "name": "LED brightness" },
+      "screen_brightness": { "name": "Screen brightness" },
+      "soundscape_volume": { "name": "Soundscape volume" }
+    },
+    "sensor": {
+      "current_view": { "name": "Current view" }
+    },
+    "switch": {
+      "daily_routine": { "name": "Daily routine" },
+      "display": { "name": "Display" },
+      "sound_only": { "name": "Sound only" },
+      "widgets_visible": { "name": "Widgets" }
+    }
+  }
+}

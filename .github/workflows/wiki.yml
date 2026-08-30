@@ -1,0 +1,34 @@
+name: wiki
+
+# The wiki is a published copy of the docs in this repo; edit the sources,
+# never the wiki. Follows the wiki-sync pattern used by the other
+# disruptivepatternmaterial repositories.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - '.github/wiki-sync.yml'
+      - '.github/workflows/wiki.yml'
+  workflow_dispatch:
+
+concurrency:
+  # Two pushes in quick succession must not race two wiki pushes.
+  group: wiki-sync
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      # Pushing to <repo>.wiki.git needs this at job scope.
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          # --check reads `git log` per source file, so it needs real history.
+          fetch-depth: 0
+
+      - uses: disruptivepatternmaterial/wiki-sync-action@main

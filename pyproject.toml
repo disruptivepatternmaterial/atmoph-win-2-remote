@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "atmoph-window-remote"
+version = "0.1.0"
+description = "Local BLE control for Atmoph Window 2 in Home Assistant"
+readme = "README.md"
+requires-python = ">=3.13"
+license = "MIT"
+authors = [{ name = "disruptivepatternmaterial" }]
+dependencies = [
+  "bleak>=1.1.1",
+  "bleak-retry-connector>=4.6.3",
+]
+
+[project.optional-dependencies]
+# Lint and the protocol test suite. Deliberately free of Home Assistant:
+# importing it would pull in the USB and serial stacks that
+# homeassistant.components.bluetooth depends on, for no test coverage gain.
+dev = [
+  "pytest>=9.0.0",
+  "pytest-asyncio>=1.1.0",
+  "ruff>=0.12.0",
+]
+# Only needed to type-check or run the Home Assistant facing modules locally.
+# Home Assistant installs these itself at runtime.
+homeassistant = [
+  "homeassistant>=2026.8.0",
+]
+
+# The repository is a Home Assistant custom component, not a library. Only the
+# integration package is importable; docs, tools, and tests stay out of the
+# wheel so setuptools does not try to auto-discover them.
+[tool.setuptools]
+packages = ["custom_components.atmoph_window"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+# Import the integration from the checkout so the protocol tests run without
+# installing the package.
+pythonpath = ["."]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["B", "E", "F", "I", "UP"]
+
+[tool.ruff.format]
+quote-style = "double"
