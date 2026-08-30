@@ -18,6 +18,7 @@ Subcommands:
     ssdp                   M-SEARCH for UPnP/DLNA roots
     ports HOST             full 1-65535 TCP connect scan
     fingerprint HOST PORT  banner grab, then an HTTP request if it looks HTTP
+    android HOST           look for Android diagnostic ports, ADB included
 
 Results print as text and, with --json, as a machine-readable document.
 """
@@ -35,6 +36,7 @@ import socket
 import struct
 import sys
 import time
+from collections.abc import Sequence
 from dataclasses import asdict, dataclass, field
 
 # Ports worth trying first on an Android-based appliance: web UIs, ADB, cast
@@ -61,6 +63,40 @@ MDNS_PORT = 5353
 SSDP_GROUP = "239.255.255.250"
 SSDP_PORT = 1900
 
+# The Window 2 runs Android on a Cortex-A53, so 5555 is the prize: an open
+# adbd yields `logcat` and `dumpsys wifi`, which would explain a Wi-Fi or LED
+# fault without anyone reverse engineering the firmware.
+ANDROID_PORTS: tuple[tuple[int, str], ...] = (
+    (5555, "adbd, the on-device Android Debug Bridge"),
+    (5037, "adb server, normally a host rather than a device"),
+    (2323, "Fully Kiosk Browser remote administration"),
+    (8080, "HTTP alternate, a kiosk or debug web UI"),
+    (80, "HTTP"),
+    (443, "HTTPS"),
+    (5900, "VNC, sometimes present on kiosk builds"),
+)
+
+# ADB transport framing. The header is six little-endian words: command, two
+# arguments, payload length, a plain byte sum of the payload, and the command
+# with every bit flipped.
+ADB_CNXN = 0x4E584E43
+ADB_AUTH = 0x48545541
+ADB_VERSION = 0x01000000
+ADB_MAX_PAYLOAD = 256 * 1024
+ADB_COMMANDS = {
+    ADB_CNXN: "CNXN",
+    ADB_AUTH: "AUTH",
+    0x45534C43: "CLSE",
+    0x4E45504F: "OPEN",
+    0x59414B4F: "OKAY",
+    0x45544257: "WRTE",
+    0x53544C53: "STLS",
+}
+
+# Ports where a listener that is not adbd is itself worth reporting.
+ADB_PORTS = frozenset({5555, 5037})
+ADB_SPEAKING = frozenset({"adb-open", "adb-auth-required", "adb-unexpected"})
+
 
 @dataclass
 class PortResult:
@@ -80,6 +116,18 @@ class HostResult:
     hostname: str | None = None
     open_ports: list[int] = field(default_factory=list)
     evidence: str = ""
+
+
+@dataclass
+class SurfaceResult:
+    """One candidate diagnostic port and what it turned out to be."""
+
+    port: int
+    label: str
+    state: str
+    adb: str | None = None
+    detail: str | None = None
+    next_step: str | None = None
 
 
 async def _connect(host: str, port: int, timeout: float) -> str:
@@ -385,6 +433,134 @@ async def fingerprint(host: str, port: int, timeout: float) -> dict[str, str]:
     return out
 
 
+def _adb_message(command: int, arg0: int, arg1: int, payload: bytes) -> bytes:
+    """Frame one ADB transport message."""
+    header = struct.pack(
+        "<6I",
+        command,
+        arg0,
+        arg1,
+        len(payload),
+        sum(payload) & 0xFFFFFFFF,
+        command ^ 0xFFFFFFFF,
+    )
+    return header + payload
+
+
+async def adb_probe(host: str, port: int, timeout: float) -> dict[str, str]:
+    """Ask a listener to complete the ADB connect handshake.
+
+    This separates a real adbd from anything else that happens to listen on
+    5555, and separates a device that will accept a connection from one that
+    will first demand the authorisation prompt. Nothing is run on the device:
+    the exchange stops at the banner adbd sends unasked.
+    """
+    out: dict[str, str] = {}
+    try:
+        reader, writer = await asyncio.wait_for(
+            asyncio.open_connection(host, port), timeout=timeout
+        )
+    except (TimeoutError, OSError) as exc:
+        out["state"] = "unreachable"
+        out["detail"] = str(exc)
+        return out
+    try:
+        writer.write(
+            _adb_message(ADB_CNXN, ADB_VERSION, ADB_MAX_PAYLOAD, b"host::atmoph\x00")
+        )
+        await writer.drain()
+        try:
+            header = await asyncio.wait_for(reader.readexactly(24), timeout=timeout)
+        except (TimeoutError, asyncio.IncompleteReadError):
+            out["state"] = "no-reply"
+            out["detail"] = "nothing answered the ADB handshake within the timeout"
+            return out
+
+        command, arg0, _arg1, length, _check, magic = struct.unpack("<6I", header)
+        if magic != command ^ 0xFFFFFFFF:
+            out["state"] = "not-adb"
+            out["detail"] = f"reply is not ADB framing: {header.hex(' ')}"
+            return out
+
+        payload = b""
+        if 0 < length <= ADB_MAX_PAYLOAD:
+            with contextlib.suppress(TimeoutError, asyncio.IncompleteReadError):
+                payload = await asyncio.wait_for(
+                    reader.readexactly(length), timeout=timeout
+                )
+        out["reply"] = ADB_COMMANDS.get(command, f"0x{command:08x}")
+
+        if command == ADB_CNXN:
+            out["state"] = "adb-open"
+            out["banner"] = payload.rstrip(b"\x00").decode("utf-8", "replace")
+        elif command == ADB_AUTH:
+            out["state"] = "adb-auth-required"
+            out["detail"] = (
+                f"adbd sent an auth token (type {arg0}), so it needs this host's "
+                "key authorised on the device first"
+            )
+        else:
+            out["state"] = "adb-unexpected"
+            out["detail"] = f"ADB framing but a {out['reply']} reply"
+        return out
+    finally:
+        writer.close()
+        with contextlib.suppress(Exception):
+            await writer.wait_closed()
+
+
+def _next_step(host: str, port: int, adb: str | None) -> str | None:
+    """Say what the operator should do about an open port."""
+    if adb in ADB_SPEAKING:
+        prompt = (
+            " The window has a screen, so watch it for the authorisation prompt."
+            if adb == "adb-auth-required"
+            else ""
+        )
+        return (
+            f"adb connect {host}:{port}, then `adb -s {host}:{port} logcat` and "
+            f"`adb -s {host}:{port} shell dumpsys wifi`.{prompt}"
+        )
+    if port in ADB_PORTS:
+        return (
+            f"something listens on {port} but does not speak ADB; try "
+            f"fingerprint {host} {port}"
+        )
+    if port == 2323:
+        return f"open http://{host}:2323 for the Fully Kiosk admin page"
+    if port == 5900:
+        return f"point a VNC viewer at {host}:5900"
+    return f"fingerprint {host} {port}"
+
+
+async def android_surfaces(
+    host: str, ports: Sequence[tuple[int, str]], timeout: float, limit: int
+) -> list[SurfaceResult]:
+    """Check one host for the Android diagnostic ports worth having.
+
+    Every open port gets an ADB handshake, not only 5555, because adbd on a
+    non-default port is exactly the sort of thing this is looking for. The
+    result is recorded separately from the TCP state so a listener that simply
+    is not adbd does not read as a failure.
+    """
+    semaphore = asyncio.Semaphore(limit)
+    states = await asyncio.gather(
+        *(_gated_connect(semaphore, host, port, timeout) for port, _ in ports)
+    )
+    results: list[SurfaceResult] = []
+    for (port, label), state in zip(ports, states, strict=True):
+        result = SurfaceResult(port=port, label=label, state=state)
+        if state == "open":
+            probe = await adb_probe(host, port, timeout)
+            verdict = probe.get("state", "not-adb")
+            if verdict in ADB_SPEAKING or port in ADB_PORTS:
+                result.adb = verdict
+                result.detail = probe.get("banner") or probe.get("detail")
+            result.next_step = _next_step(host, port, result.adb)
+        results.append(result)
+    return results
+
+
 def _emit(payload: object, as_json: bool, text: str) -> None:
     print(json.dumps(payload, indent=2) if as_json else text)
 
@@ -416,6 +592,14 @@ async def main() -> int:
     p_fp = sub.add_parser("fingerprint", help="banner grab and HTTP probe")
     p_fp.add_argument("host")
     p_fp.add_argument("port", type=int)
+    p_android = sub.add_parser(
+        "android", help="look for Android diagnostic ports, ADB included"
+    )
+    p_android.add_argument("host")
+    p_android.add_argument(
+        "--ports",
+        help="comma-separated port list, overriding the built-in Android set",
+    )
 
     args = parser.parse_args()
 
@@ -490,6 +674,37 @@ async def main() -> int:
             args.json,
             "\n".join(f"{k}: {v}" for k, v in result.items()),
         )
+        return 0
+
+    if args.command == "android":
+        if args.ports:
+            ports = tuple(
+                (int(p.strip()), "requested")
+                for p in args.ports.split(",")
+                if p.strip()
+            )
+        else:
+            ports = ANDROID_PORTS
+        surfaces = await android_surfaces(
+            args.host, ports, args.timeout, args.concurrency
+        )
+        answered = [s for s in surfaces if s.state != "filtered"]
+        lines = [f"Android diagnostic surfaces on {args.host}"]
+        for surface in surfaces:
+            state = f"{surface.state}/{surface.adb}" if surface.adb else surface.state
+            lines.append(f"  {surface.port:>5}/tcp {state:<22} {surface.label}")
+            if surface.detail:
+                lines.append(f"      {surface.detail}")
+            if surface.next_step:
+                lines.append(f"      next: {surface.next_step}")
+        if not answered:
+            lines.append(
+                "\nEvery port timed out, which is not the same as closed. macOS "
+                "sandboxing blocks LAN TCP connects and returns exactly this, so "
+                "re-run from an unsandboxed terminal on the window's own subnet "
+                "before recording that nothing is open."
+            )
+        _emit([asdict(s) for s in surfaces], args.json, "\n".join(lines))
         return 0
 
     return 2
