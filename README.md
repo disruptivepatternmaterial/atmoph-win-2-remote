@@ -155,6 +155,31 @@ Full detail, with an evidence tier on every claim, is in
 class-by-class walkthrough are in
 [docs/ANDROID-APP-ANALYSIS.md](docs/ANDROID-APP-ANALYSIS.md).
 
+## Diagnosing a misbehaving window
+
+`tools/atmoph_diag.py` dumps a window's entire GATT table — both services,
+every declared property, every readable value — and turns the quick-settings
+document into a verdict. Two units can be dumped with `--normalize` and
+compared with `diff`, which is how a firmware or model difference gets told
+apart from a hardware fault without opening anything or shipping anything.
+
+`tools/atmoph_netscan.py android` looks for a diagnostic port and completes a
+real ADB handshake against anything that answers, which distinguishes `adbd`
+from an unrelated listener.
+
+[docs/DIAGNOSTICS.md](docs/DIAGNOSTICS.md) has the procedure and the decision
+trees.
+
+## Documentation
+
+- [BLE protocol](docs/PROTOCOL.md) — the recovered protocol, with evidence tiers
+- [Android app analysis](docs/ANDROID-APP-ANALYSIS.md) — how it was recovered
+- [Diagnostics](docs/DIAGNOSTICS.md) — investigating a window that misbehaves
+- [Brand assets](docs/BRAND-ASSETS.md) — icon requirements and submission
+
+`docs/` is the source of truth and is published to the repository wiki
+automatically after changes merge to `main`. Edit the sources, never the wiki.
+
 ## Development
 
 The protocol suite runs without Home Assistant at all, which is what keeps
