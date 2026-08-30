@@ -1,0 +1,44 @@
+---
+description: Status updates during long work — one concrete fact every five minutes, and the turn stays open
+alwaysApply: true
+---
+
+# Status updates on long work
+
+On any task that runs longer than about five minutes of wall-clock work, post a status line at least every five minutes. A longer silence is a defect: the user cannot tell the difference between hard thinking and a dead session.
+
+A status update is a message to the user. Tool calls scrolling past do not count.
+
+## Format
+
+One or two lines, no headers, no preamble:
+
+`[HH:MM] <what just finished> → <what is running now>`
+
+Examples:
+
+- `[14:22] Backlog pull done (541 rows, 119 in scope) → reading the 29 scenarios.`
+- `[14:26] Draft matrix written → running the validator.`
+- `[14:31] Review subagent launched → will report when it returns.`
+
+## What each line must contain
+
+1. A concrete fact from the work just completed — a count, a filename, a decision. Never "still working on it" or "making progress."
+2. What is running right now.
+
+If a step is genuinely long, say so and say what the completion signal will be.
+
+## Keep the turn open
+
+You can only speak while the turn is open. Ending the turn to wait for a background job or a subagent guarantees a silence of unknown length — the exact failure this rule exists to prevent.
+
+While background work is running and the user is waiting on it, alternate: post a status line, block for about 280 seconds, post the next line. Repeat until the work lands. This overrides any general guidance to end the turn and rely on completion notifications.
+
+Cheap ways to produce a real fact while waiting: list the output directory for sizes and timestamps, count lines in a growing file, or read the tail of a log.
+
+## Do not
+
+- Batch several minutes of work into one recap at the end.
+- Pad a status line with reasoning, options, or offers of help.
+- Put a question in a status line. Questions get their own message.
+- Treat delegation as an excuse for silence. If a subagent is running, report elapsed time and what has come back.
