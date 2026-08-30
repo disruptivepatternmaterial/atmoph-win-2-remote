@@ -1,0 +1,787 @@
+[
+    {
+        "id": "atmo.tab",
+        "type": "tab",
+        "label": "Atmoph Windows",
+        "disabled": false,
+        "info": "Office-left Atmoph Window 2.\n\nOn at good morning, off at good night, view advanced on the hour and half hour.\nViews in China, Hong Kong, Singapore and Macau are skipped by geocoded country\ncode. Japan is on an always-allow list and cannot be blocked. Anything that does\nnot geocode is shown, never skipped.\n\nThe last 100 views are kept in flow context 'views' with location, country and\nthumbnail, which is how 'too city like' and 'beachy' get turned into blocklist\nentries. Edit the blocklist in the BLOCKLIST change node and deploy.\n\nMeasured on 29 Aug 2026:\n- location lags the view name by about 4ms, so the 5s settle is ample.\n- pressing next view on the left moves all three windows: right follows about\n  5s later, middle about 30s later. They are one panorama, so blocking a view\n  here blocks it on all three.",
+        "env": []
+    },
+    {
+        "id": "atmo.gm",
+        "type": "server-state-changed",
+        "z": "atmo.tab",
+        "name": "good morning",
+        "server": "85b918fc1d4c8834",
+        "version": 6,
+        "outputs": 1,
+        "exposeAsEntityConfig": "",
+        "entities": {
+            "entity": [
+                "input_boolean.good_morning"
+            ],
+            "substring": [],
+            "regex": []
+        },
+        "outputInitially": false,
+        "stateType": "str",
+        "ifState": "on",
+        "ifStateType": "str",
+        "ifStateOperator": "is",
+        "outputOnlyOnStateChange": true,
+        "for": "0",
+        "forType": "num",
+        "forUnits": "minutes",
+        "ignorePrevStateNull": false,
+        "ignorePrevStateUnknown": false,
+        "ignorePrevStateUnavailable": false,
+        "ignoreCurrentStateUnknown": true,
+        "ignoreCurrentStateUnavailable": true,
+        "outputProperties": [
+            {
+                "property": "payload",
+                "propertyType": "msg",
+                "value": "",
+                "valueType": "entityState"
+            },
+            {
+                "property": "data",
+                "propertyType": "msg",
+                "value": "",
+                "valueType": "eventData"
+            }
+        ],
+        "x": 170,
+        "y": 100,
+        "wires": [
+            [
+                "atmo.on.display",
+                "atmo.on.routine",
+                "atmo.on.widgets"
+            ]
+        ]
+    },
+    {
+        "id": "atmo.on.display",
+        "type": "api-call-service",
+        "z": "atmo.tab",
+        "name": "display on",
+        "server": "85b918fc1d4c8834",
+        "version": 7,
+        "debugenabled": false,
+        "action": "switch.turn_on",
+        "floorId": [],
+        "areaId": [],
+        "deviceId": [],
+        "entityId": [
+            "switch.office_left_display"
+        ],
+        "labelId": [],
+        "data": "",
+        "dataType": "jsonata",
+        "mergeContext": "",
+        "mustacheAltTags": false,
+        "outputProperties": [],
+        "queue": "all",
+        "blockInputOverrides": false,
+        "domain": "switch",
+        "service": "turn_on",
+        "x": 470,
+        "y": 60,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "atmo.on.routine",
+        "type": "api-call-service",
+        "z": "atmo.tab",
+        "name": "daily routine on",
+        "server": "85b918fc1d4c8834",
+        "version": 7,
+        "debugenabled": false,
+        "action": "switch.turn_on",
+        "floorId": [],
+        "areaId": [],
+        "deviceId": [],
+        "entityId": [
+            "switch.office_left_daily_routine"
+        ],
+        "labelId": [],
+        "data": "",
+        "dataType": "jsonata",
+        "mergeContext": "",
+        "mustacheAltTags": false,
+        "outputProperties": [],
+        "queue": "all",
+        "blockInputOverrides": false,
+        "domain": "switch",
+        "service": "turn_on",
+        "x": 490,
+        "y": 120,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "atmo.on.widgets",
+        "type": "api-call-service",
+        "z": "atmo.tab",
+        "name": "widgets on",
+        "server": "85b918fc1d4c8834",
+        "version": 7,
+        "debugenabled": false,
+        "action": "switch.turn_on",
+        "floorId": [],
+        "areaId": [],
+        "deviceId": [],
+        "entityId": [
+            "switch.office_left_widgets"
+        ],
+        "labelId": [],
+        "data": "",
+        "dataType": "jsonata",
+        "mergeContext": "",
+        "mustacheAltTags": false,
+        "outputProperties": [],
+        "queue": "all",
+        "blockInputOverrides": false,
+        "domain": "switch",
+        "service": "turn_on",
+        "x": 470,
+        "y": 180,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "atmo.gn",
+        "type": "server-state-changed",
+        "z": "atmo.tab",
+        "name": "good night",
+        "server": "85b918fc1d4c8834",
+        "version": 6,
+        "outputs": 1,
+        "exposeAsEntityConfig": "",
+        "entities": {
+            "entity": [
+                "input_boolean.good_night"
+            ],
+            "substring": [],
+            "regex": []
+        },
+        "outputInitially": false,
+        "stateType": "str",
+        "ifState": "on",
+        "ifStateType": "str",
+        "ifStateOperator": "is",
+        "outputOnlyOnStateChange": true,
+        "for": "0",
+        "forType": "num",
+        "forUnits": "minutes",
+        "ignorePrevStateNull": false,
+        "ignorePrevStateUnknown": false,
+        "ignorePrevStateUnavailable": false,
+        "ignoreCurrentStateUnknown": true,
+        "ignoreCurrentStateUnavailable": true,
+        "outputProperties": [
+            {
+                "property": "payload",
+                "propertyType": "msg",
+                "value": "",
+                "valueType": "entityState"
+            },
+            {
+                "property": "data",
+                "propertyType": "msg",
+                "value": "",
+                "valueType": "eventData"
+            }
+        ],
+        "x": 160,
+        "y": 260,
+        "wires": [
+            [
+                "atmo.off.display"
+            ]
+        ]
+    },
+    {
+        "id": "atmo.off.display",
+        "type": "api-call-service",
+        "z": "atmo.tab",
+        "name": "display off",
+        "server": "85b918fc1d4c8834",
+        "version": 7,
+        "debugenabled": false,
+        "action": "switch.turn_off",
+        "floorId": [],
+        "areaId": [],
+        "deviceId": [],
+        "entityId": [
+            "switch.office_left_display"
+        ],
+        "labelId": [],
+        "data": "",
+        "dataType": "jsonata",
+        "mergeContext": "",
+        "mustacheAltTags": false,
+        "outputProperties": [],
+        "queue": "all",
+        "blockInputOverrides": false,
+        "domain": "switch",
+        "service": "turn_off",
+        "x": 470,
+        "y": 260,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "atmo.gate",
+        "type": "api-current-state",
+        "z": "atmo.tab",
+        "name": "display on?",
+        "server": "85b918fc1d4c8834",
+        "version": 3,
+        "outputs": 2,
+        "halt_if": "on",
+        "halt_if_type": "str",
+        "halt_if_compare": "is",
+        "entity_id": "switch.office_left_display",
+        "state_type": "str",
+        "blockInputOverrides": false,
+        "outputProperties": [
+            {
+                "property": "payload",
+                "propertyType": "msg",
+                "value": "",
+                "valueType": "entityState"
+            }
+        ],
+        "for": "0",
+        "forType": "num",
+        "forUnits": "minutes",
+        "x": 460,
+        "y": 360,
+        "wires": [
+            [
+                "atmo.press"
+            ],
+            []
+        ]
+    },
+    {
+        "id": "atmo.press",
+        "type": "api-call-service",
+        "z": "atmo.tab",
+        "name": "next view",
+        "server": "85b918fc1d4c8834",
+        "version": 7,
+        "debugenabled": false,
+        "action": "button.press",
+        "floorId": [],
+        "areaId": [],
+        "deviceId": [],
+        "entityId": [
+            "button.office_left_next_view"
+        ],
+        "labelId": [],
+        "data": "",
+        "dataType": "jsonata",
+        "mergeContext": "",
+        "mustacheAltTags": false,
+        "outputProperties": [],
+        "queue": "all",
+        "blockInputOverrides": false,
+        "domain": "button",
+        "service": "press",
+        "x": 680,
+        "y": 360,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "atmo.boot",
+        "type": "inject",
+        "z": "atmo.tab",
+        "name": "load blocklist on start",
+        "props": [
+            {
+                "p": "payload"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": true,
+        "onceDelay": 0.5,
+        "topic": "",
+        "payload": "",
+        "payloadType": "date",
+        "x": 200,
+        "y": 460,
+        "wires": [
+            [
+                "atmo.blocklist"
+            ]
+        ]
+    },
+    {
+        "id": "atmo.blocklist",
+        "type": "change",
+        "z": "atmo.tab",
+        "name": "BLOCKLIST - edit me",
+        "rules": [
+            {
+                "t": "set",
+                "p": "blocklist",
+                "pt": "flow",
+                "to": "{\"always\":[\"jp\",\"ch\",\"at\"],\"countries\":[\"cn\",\"hk\",\"sg\",\"mo\",\"gr\",\"au\",\"ae\"],\"views\":[\"Andromeda Galaxy 2\"],\"locations\":[\"Sedona, Arizona\"]}",
+                "tot": "json"
+            }
+        ],
+        "action": "",
+        "property": "",
+        "from": "",
+        "to": "",
+        "reg": false,
+        "x": 470,
+        "y": 460,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "atmo.view",
+        "type": "server-state-changed",
+        "z": "atmo.tab",
+        "name": "current view changed",
+        "server": "85b918fc1d4c8834",
+        "version": 6,
+        "outputs": 1,
+        "exposeAsEntityConfig": "",
+        "entities": {
+            "entity": [
+                "sensor.office_left_current_view"
+            ],
+            "substring": [],
+            "regex": []
+        },
+        "outputInitially": false,
+        "stateType": "str",
+        "ifState": "",
+        "ifStateType": "str",
+        "ifStateOperator": "is",
+        "outputOnlyOnStateChange": true,
+        "for": "0",
+        "forType": "num",
+        "forUnits": "minutes",
+        "ignorePrevStateNull": false,
+        "ignorePrevStateUnknown": false,
+        "ignorePrevStateUnavailable": false,
+        "ignoreCurrentStateUnknown": true,
+        "ignoreCurrentStateUnavailable": true,
+        "outputProperties": [
+            {
+                "property": "payload",
+                "propertyType": "msg",
+                "value": "",
+                "valueType": "entityState"
+            },
+            {
+                "property": "data",
+                "propertyType": "msg",
+                "value": "",
+                "valueType": "eventData"
+            }
+        ],
+        "x": 170,
+        "y": 560,
+        "wires": [
+            [
+                "atmo.settle"
+            ]
+        ]
+    },
+    {
+        "id": "atmo.settle",
+        "type": "delay",
+        "z": "atmo.tab",
+        "name": "let location catch up",
+        "pauseType": "delay",
+        "timeout": "10",
+        "timeoutUnits": "seconds",
+        "rate": "1",
+        "nbRateUnits": "1",
+        "rateUnits": "second",
+        "randomFirst": "1",
+        "randomLast": "5",
+        "randomUnits": "seconds",
+        "drop": false,
+        "allowrate": false,
+        "outputs": 1,
+        "x": 410,
+        "y": 560,
+        "wires": [
+            [
+                "atmo.reread"
+            ]
+        ]
+    },
+    {
+        "id": "atmo.reread",
+        "type": "api-current-state",
+        "z": "atmo.tab",
+        "name": "read the settled view",
+        "server": "85b918fc1d4c8834",
+        "version": 3,
+        "outputs": 1,
+        "halt_if": "",
+        "halt_if_type": "str",
+        "halt_if_compare": "is",
+        "entity_id": "sensor.office_left_current_view",
+        "state_type": "str",
+        "blockInputOverrides": false,
+        "outputProperties": [
+            {
+                "property": "payload",
+                "propertyType": "msg",
+                "value": "",
+                "valueType": "entityState"
+            },
+            {
+                "property": "data",
+                "propertyType": "msg",
+                "value": "",
+                "valueType": "entity"
+            }
+        ],
+        "for": "0",
+        "forType": "num",
+        "forUnits": "minutes",
+        "x": 650,
+        "y": 560,
+        "wires": [
+            [
+                "atmo.prep"
+            ]
+        ]
+    },
+    {
+        "id": "atmo.prep",
+        "type": "function",
+        "z": "atmo.tab",
+        "name": "dedupe + cache or geocode",
+        "func": "// The sensor updates its name before its location attribute, so the pair that\n// arrives on a state change can be a new view against the previous view's\n// place. The delay ahead of this node and the fresh read feeding it are what\n// make the pair trustworthy; nothing here trusts the original event.\nconst ent = msg.data || {};\nconst view = String(ent.state == null ? '' : ent.state).trim();\nconst attrs = ent.attributes || {};\nconst location = String(attrs.location == null ? '' : attrs.location).trim();\n\nif (!view || view === 'unknown' || view === 'unavailable') {\n    node.status({ fill: 'grey', shape: 'ring', text: 'no view reported' });\n    return null;\n}\n\n// Several changes in quick succession queue several evaluations that all\n// re-read the same settled value. Only the first of them is worth anything.\nconst key = view + '|' + location;\nif (flow.get('lastView') === key) { return null; }\nflow.set('lastView', key);\n\nmsg.view = view;\nmsg.location = location;\nmsg.thumb = attrs.image_url || null;\n\nif (!location) {\n    msg.country = null;\n    return [null, msg];\n}\n\nconst cache = flow.get('geo') || {};\nif (Object.prototype.hasOwnProperty.call(cache, location)) {\n    msg.country = cache[location];\n    return [null, msg];\n}\n\n// Nominatim requires a real User-Agent and asks for no more than one call a\n// second. Every place is looked up once and remembered, so with 48 advances a\n// day and a warm cache this is rare.\nmsg.url = 'https://nominatim.openstreetmap.org/search'\n        + '?format=json&limit=1&addressdetails=1&accept-language=en&q='\n        + encodeURIComponent(location);\nmsg.headers = { 'User-Agent': 'bowman-mtn-node-red/1.0 (home automation)' };\nreturn [msg, null];",
+        "outputs": 2,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 220,
+        "y": 660,
+        "wires": [
+            [
+                "atmo.geo"
+            ],
+            [
+                "atmo.decide"
+            ]
+        ]
+    },
+    {
+        "id": "atmo.geo",
+        "type": "http request",
+        "z": "atmo.tab",
+        "name": "Nominatim",
+        "method": "GET",
+        "ret": "obj",
+        "paytoqs": "ignore",
+        "url": "",
+        "tls": "",
+        "persist": false,
+        "proxy": "",
+        "insecureHTTPParser": false,
+        "authType": "",
+        "senderr": false,
+        "headers": [],
+        "x": 460,
+        "y": 620,
+        "wires": [
+            [
+                "atmo.decide"
+            ]
+        ]
+    },
+    {
+        "id": "atmo.decide",
+        "type": "function",
+        "z": "atmo.tab",
+        "name": "blocked?",
+        "func": "// Reached either straight from the cache or from the geocoder.\nif (msg.country === undefined) {\n    let cc = null;\n    const hit = Array.isArray(msg.payload) ? msg.payload[0] : null;\n    if (hit && hit.address && hit.address.country_code) {\n        cc = String(hit.address.country_code).toLowerCase();\n    }\n    msg.country = cc;\n    const cache = flow.get('geo') || {};\n    // Misses are cached too, so a place that cannot be resolved is not looked\n    // up again every half hour.\n    cache[msg.location] = cc;\n    flow.set('geo', cache);\n}\n\nconst bl = flow.get('blocklist') || {};\nconst lower = (a) => (Array.isArray(a) ? a : []).map((s) => String(s).toLowerCase());\nconst always = lower(bl.always);\nconst countries = lower(bl.countries);\nconst views = Array.isArray(bl.views) ? bl.views : [];\nconst locations = Array.isArray(bl.locations) ? bl.locations : [];\nconst cc = msg.country ? String(msg.country).toLowerCase() : null;\n\nlet blocked = false;\nlet reason;\n\nif (cc && always.indexOf(cc) >= 0) {\n    // Always-allow wins over every other rule. Japan is not on the country\n    // blocklist to begin with, but because location lags the name a Japanese\n    // view can momentarily read against the previous view's place. This makes\n    // blocking it impossible rather than merely unlikely.\n    reason = 'always allowed (' + cc + ')';\n} else if (cc && countries.indexOf(cc) >= 0) {\n    blocked = true;\n    reason = 'country ' + cc;\n} else if (views.indexOf(msg.view) >= 0) {\n    blocked = true;\n    reason = 'view on blocklist';\n} else if (locations.indexOf(msg.location) >= 0) {\n    blocked = true;\n    reason = 'location on blocklist';\n} else if (!cc) {\n    // Fail open. Anything uncertain is shown, never skipped: the cost of\n    // wrongly showing a view is one button press, the cost of wrongly\n    // skipping is silently censoring places worth seeing.\n    reason = msg.location ? 'no country for ' + msg.location : 'no location given';\n} else {\n    reason = 'allowed (' + cc + ')';\n}\n\nmsg.blocked = blocked;\nmsg.reason = reason;\n\nconst skips = Number(flow.get('skips') || 0);\nif (blocked) {\n    // A run of blocked views must not become a loop hammering the device.\n    if (skips >= 5) {\n        node.warn('five blocked views in a row, showing this one instead of pressing again: '\n                  + msg.view + ' (' + reason + ')');\n        msg.blocked = false;\n        msg.reason = 'loop guard held, would have skipped: ' + reason;\n        flow.set('skips', 0);\n        return [null, msg];\n    }\n    flow.set('skips', skips + 1);\n    return [msg, null];\n}\nflow.set('skips', 0);\nreturn [null, msg];",
+        "outputs": 2,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 680,
+        "y": 660,
+        "wires": [
+            [
+                "atmo.press",
+                "atmo.log"
+            ],
+            [
+                "atmo.log"
+            ]
+        ]
+    },
+    {
+        "id": "atmo.log",
+        "type": "function",
+        "z": "atmo.tab",
+        "name": "last 100 views",
+        "func": "// Memory only and capped, so it cannot grow into a leak. Newest first. This is\n// what \"too city like\" and \"beachy\" get read out of: after a few days, read\n// flow context 'views' and move the offenders into the blocklist.\nconst store = flow.get('views') || [];\nstore.unshift({\n    at: new Date().toISOString(),\n    view: msg.view || null,\n    location: msg.location || null,\n    country: msg.country || null,\n    thumb: msg.thumb || null,\n    skipped: !!msg.blocked,\n    reason: msg.reason || null\n});\nflow.set('views', store.slice(0, 100));\nnode.status({\n    fill: msg.blocked ? 'yellow' : 'green',\n    shape: 'dot',\n    text: (msg.blocked ? 'skipped ' : 'showing ') + (msg.view || '?')\n});\nmsg.summary = (msg.blocked ? 'skipped ' : 'showing ')\n            + (msg.view || '?') + ' | ' + (msg.location || 'no location')\n            + ' | ' + (msg.country || '--') + ' | ' + (msg.reason || '');\nreturn msg;\n",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 900,
+        "y": 720,
+        "wires": [
+            [
+                "atmo.debug"
+            ]
+        ]
+    },
+    {
+        "id": "atmo.catch",
+        "type": "catch",
+        "z": "atmo.tab",
+        "name": "",
+        "scope": null,
+        "uncaught": false,
+        "x": 200,
+        "y": 820,
+        "wires": [
+            [
+                "atmo.tagtab"
+            ]
+        ]
+    },
+    {
+        "id": "atmo.tagtab",
+        "type": "change",
+        "z": "atmo.tab",
+        "name": "tag tab",
+        "rules": [
+            {
+                "t": "set",
+                "p": "errorTab",
+                "pt": "msg",
+                "to": "Atmoph Windows",
+                "tot": "str"
+            }
+        ],
+        "action": "",
+        "property": "",
+        "from": "",
+        "to": "",
+        "reg": false,
+        "x": 390,
+        "y": 820,
+        "wires": [
+            [
+                "atmo.linkout"
+            ]
+        ]
+    },
+    {
+        "id": "atmo.linkout",
+        "type": "link out",
+        "z": "atmo.tab",
+        "name": "to Error Sink",
+        "mode": "link",
+        "links": [
+            "f68a94ac252d699f"
+        ],
+        "x": 580,
+        "y": 820,
+        "wires": []
+    },
+    {
+        "id": "atmo.debug",
+        "type": "debug",
+        "z": "atmo.tab",
+        "name": "view decision",
+        "active": true,
+        "tosidebar": true,
+        "console": true,
+        "tostatus": false,
+        "complete": "summary",
+        "targetType": "msg",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 1120,
+        "y": 720,
+        "wires": []
+    },
+    {
+        "id": "6697b25b21e82527",
+        "type": "time-inject",
+        "z": "atmo.tab",
+        "name": "Time inject (3)",
+        "nameInt": "*/10 * * * * = {}",
+        "positionConfig": "42aa7c243d68af46",
+        "props": [
+            {
+                "p": "",
+                "pt": "msgPayload",
+                "v": "{}",
+                "vt": "json",
+                "o": "",
+                "oT": "none",
+                "oM": "60000",
+                "f": 0,
+                "fS": 0,
+                "fT": "UNIX timestamp (ms)",
+                "fI": "0",
+                "next": true,
+                "days": "*",
+                "months": "*",
+                "onlyOddDays": false,
+                "onlyEvenDays": false,
+                "onlyOddWeeks": false,
+                "onlyEvenWeeks": false
+            },
+            {
+                "p": "",
+                "pt": "msgTopic",
+                "v": "",
+                "vt": "str",
+                "o": "",
+                "oT": "none",
+                "oM": "60000",
+                "f": 0,
+                "fS": 0,
+                "fT": "UNIX timestamp (ms)",
+                "fI": "0",
+                "next": false,
+                "days": "*",
+                "months": "*",
+                "onlyOddDays": false,
+                "onlyEvenDays": false,
+                "onlyOddWeeks": false,
+                "onlyEvenWeeks": false
+            }
+        ],
+        "injectTypeSelect": "cron",
+        "intervalCount": "15",
+        "intervalCountType": "num",
+        "intervalCountMultiplier": 60000,
+        "cron": "*/10 * * * *",
+        "cronType": "cronexpr",
+        "time": "7:00:30",
+        "timeType": "entered",
+        "offset": 0,
+        "offsetType": "none",
+        "offsetMultiplier": 60000,
+        "timeEnd": "22:00:30",
+        "timeEndType": "entered",
+        "timeEndOffset": 0,
+        "timeEndOffsetType": "none",
+        "timeEndOffsetMultiplier": 60000,
+        "timeDays": "*",
+        "timeOnlyOddDays": false,
+        "timeOnlyEvenDays": false,
+        "timeOnlyOddWeeks": false,
+        "timeOnlyEvenWeeks": false,
+        "timeMonths": "*",
+        "timedatestart": "",
+        "timedateend": "",
+        "property": "",
+        "propertyType": "none",
+        "propertyCompare": "true",
+        "propertyThreshold": "",
+        "propertyThresholdType": "num",
+        "timeAlt": "",
+        "timeAltType": "entered",
+        "timeAltDays": "*",
+        "timeAltOnlyOddDays": false,
+        "timeAltOnlyEvenDays": false,
+        "timeAltOnlyOddWeeks": false,
+        "timeAltOnlyEvenWeeks": false,
+        "timeAltMonths": "*",
+        "timeAltOffset": 0,
+        "timeAltOffsetType": "none",
+        "timeAltOffsetMultiplier": 60000,
+        "once": false,
+        "onceDelay": "5",
+        "recalcTime": 2,
+        "x": 170,
+        "y": 360,
+        "wires": [
+            [
+                "atmo.gate"
+            ]
+        ]
+    },
+    {
+        "id": "85b918fc1d4c8834",
+        "type": "server",
+        "name": "Home Assistant",
+        "version": 6,
+        "addon": false,
+        "rejectUnauthorizedCerts": false,
+        "ha_boolean": [
+            "y",
+            "yes",
+            "true",
+            "on",
+            "home",
+            "open"
+        ],
+        "connectionDelay": true,
+        "cacheJson": true,
+        "heartbeat": true,
+        "heartbeatInterval": "15",
+        "areaSelector": "friendlyName",
+        "deviceSelector": "friendlyName",
+        "entitySelector": "friendlyName",
+        "statusSeparator": ": ",
+        "statusYear": "hidden",
+        "statusMonth": "short",
+        "statusDay": "numeric",
+        "statusHourCycle": "h23",
+        "statusTimeFormat": "h:m:s",
+        "enableGlobalContextStore": true
+    },
+    {
+        "id": "42aa7c243d68af46",
+        "type": "position-config",
+        "name": "Bellingham",
+        "isValide": "true",
+        "angleType": "deg",
+        "timeZoneOffset": 99,
+        "timeZoneDST": 0,
+        "stateTimeFormat": "3",
+        "stateDateFormat": "12",
+        "contextStore": "file",
+        "sunPositions": [],
+        "predefAngles": []
+    },
+    {
+        "id": "4c2708c0defc0248",
+        "type": "global-config",
+        "env": [],
+        "modules": {
+            "node-red-contrib-home-assistant-websocket": "0.80.3",
+            "node-red-contrib-sun-position": "3.0.1"
+        }
+    }
+]

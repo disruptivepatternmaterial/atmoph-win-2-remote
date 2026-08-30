@@ -10,9 +10,11 @@ official Android app speaks, directly to the window.
 
 ## Why this exists
 
-The Window 2 is a beautiful piece of hardware with no local API. Control is the
-phone app, the physical button, Siri, or the dedicated remote. IFTTT was the
-only automation hook, and the newer Window Yo dropped even that.
+The Window 2 is a frustrating piece of hardware with no local API. Control is
+the phone app, the physical button, Siri, or the dedicated remote. IFTTT was
+the only automation hook, and the newer Window Yo dropped even that. Support
+has been abysmal, and many of mine have broken — expensive trips from the USA
+to Japan. While I love mine, I would not "invest" in them again.
 
 Everything the app can do, it does over an unauthenticated BLE service. So it
 can be done from Home Assistant instead, on your own network, with no
@@ -83,11 +85,47 @@ attempt.
 
 | Limitation | Why |
 |---|---|
-| Views can be stepped, not chosen | No characteristic selects a view. The one that looks like it does silently discards writes ([#7](https://github.com/disruptivepatternmaterial/atmoph-win-2-remote/issues/7)) |
+| Views can be stepped, not chosen | No characteristic selects a view. The one that looks like it does silently discards writes ([#7](https://github.com/disruptivepatternmaterial/atmoph-win-2-remote/issues/7)). The [Node-RED example](#example-node-red-control) skips unwanted views by pressing next |
 | A window seen without a name is missed | The name is only in the scan response; the stable ID needs a connection first ([#8](https://github.com/disruptivepatternmaterial/atmoph-win-2-remote/issues/8)) |
 | No text entry | The app encrypts typed text with a key hardcoded in the APK. Not needed for control, and not reproduced here |
 | No zoom | The pinch gesture maps poorly to a Home Assistant entity |
 | The device page shows a generic puzzle piece | Home Assistant loads icons from `brands.home-assistant.io`, never from the integration folder, so it needs an upstream submission ([#10](https://github.com/disruptivepatternmaterial/atmoph-win-2-remote/issues/10)) |
+
+## Example: Node-RED control
+
+[`examples/nodered-atmoph-windows.json`](examples/nodered-atmoph-windows.json)
+is a full Node-RED tab exported from a live three-window panorama on 29 Aug
+2026. Import it, point the Home Assistant nodes at your server, and rewrite
+the `office_left_*` entity ids.
+
+It uses the entities this integration already exposes — display, daily
+routine, widgets, next view, and current view with `location` / `image_url`
+attributes — plus two helpers (`input_boolean.good_morning` /
+`input_boolean.good_night`) that are not part of this project.
+
+| Piece | What it does |
+|---|---|
+| Good morning / good night | Turns display, daily routine, and widgets on in the morning; display off at night |
+| Time inject | Cron `*/10 * * * *`: if the display is on, press next on the left window |
+| Current view changed | Wait 10 s, re-read the sensor, geocode `location` via Nominatim (cached), skip if the country / view / location is on the blocklist |
+| BLOCKLIST - edit me | Flow-context JSON: `always` (cannot be skipped), `countries`, `views`, `locations` |
+| last 100 views | Newest-first ring buffer in flow context `views`, which is how a "too city like" or "beachy" view gets promoted into the blocklist |
+
+Pressing next on the left window moved all three in that install (right about
+5 s later, middle about 30 s). They are one panorama, so a skip here skips it
+everywhere. Location lagged the view title by about 4 ms; the 10 s settle is
+the delay node, not a measurement of how long the window needs.
+
+Un-geocoded places are shown, never skipped. Always-allow wins, which is why
+Japan cannot be blocked even if a lagging location attribute momentarily
+points at a blocked country. Five blocked views in a row stop pressing so a
+long run cannot hammer the window.
+
+Palette: `node-red-contrib-home-assistant-websocket` and
+`node-red-contrib-sun-position`. The link-out to an Error Sink tab is
+optional and will be dangling unless you have that tab. Change the Nominatim
+`User-Agent` if you are not the original exporter. Edit the blocklist node
+and deploy; a boot inject reloads it on Node-RED start.
 
 ## How the protocol was recovered
 
