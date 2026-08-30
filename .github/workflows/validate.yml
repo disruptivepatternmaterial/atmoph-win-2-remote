@@ -35,9 +35,3 @@ jobs:
       - uses: hacs/action@main
         with:
           category: integration
-          # `brands` needs an accepted pull request against
-          # home-assistant/brands, which no change in this repository can
-          # satisfy. Excluded so the other eight checks stay enforced instead
-          # of being drowned out by a failure nobody here can fix. Tracked in
-          # issue #10; remove this once the brands entry lands.
-          ignore: brands

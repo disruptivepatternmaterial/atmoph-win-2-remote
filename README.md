@@ -39,12 +39,9 @@ bounds are per-device and wider than you would guess.
 
 ## Status
 
-Working on real hardware. The first live run confirmed the parts that had only
-ever been inferred from decompiled code: service-UUID discovery by active scan,
-connecting with no pairing or authentication, MTU negotiation, the initial read
-sequence, and notification subscriptions.
-
-Systematic per-claim validation against an AW102 is still open in
+The app-derived protocol and Home Assistant behavior are covered by offline
+tests, but this project has not yet verified them against an AW102. Hardware
+validation is open in
 [issue #5](https://github.com/disruptivepatternmaterial/atmoph-win-2-remote/issues/5),
 and `docs/PROTOCOL.md` labels every claim by how strong the evidence for it
 actually is. Treat anything not marked hardware-verified as a good hypothesis.
