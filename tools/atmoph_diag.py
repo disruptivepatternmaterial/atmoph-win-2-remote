@@ -516,6 +516,22 @@ async def discover(
     return sorted(seen.values(), key=lambda t: (t.name or "\uffff", t.address))
 
 
+async def negotiated_mtu(client: Any) -> int | None:
+    """Report the MTU actually in force, nudging BlueZ into telling the truth.
+
+    bleak has no MTU request API, because CoreBluetooth and BlueZ both
+    negotiate it themselves. The BlueZ backend then reports the 23-byte floor
+    until something acquires the write file descriptor, which bleak's own
+    mtu_size example works around this way. The app asks for 128, so a dump
+    that recorded 23 would look like a fault that is not there.
+    """
+    acquire = getattr(getattr(client, "_backend", None), "_acquire_mtu", None)
+    if acquire is not None:
+        with contextlib.suppress(Exception):
+            await acquire()
+    return getattr(client, "mtu_size", None)
+
+
 async def _read_characteristic(client: Any, characteristic: Any) -> ValueDump:
     try:
         raw = await client.read_gatt_char(characteristic)
@@ -681,7 +697,7 @@ async def collect_dump(
         rssi=target.rssi,
         advertised_service_uuids=list(target.service_uuids),
         connected=bool(getattr(client, "is_connected", True)),
-        mtu_negotiated=getattr(client, "mtu_size", None),
+        mtu_negotiated=await negotiated_mtu(client),
     )
 
     watcher = SettingsWatcher()
