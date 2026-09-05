@@ -1,6 +1,6 @@
 # Install at atmoph-win-2-remote/.github/wiki-sync.yml
-# Default branch: main. PRIVATE repo, so its wiki is private too — but the
-# repository is intended to go public, so the network-identifier scan is left
-# on and no private addresses or device identifiers belong in docs/ regardless.
+# Default branch: main. PUBLIC repo, so its wiki is public too: the
+# network-identifier scan is enforced, and no private address, MAC, device
+# UUID, or serial belongs in anything published from docs/.
 auto:
   - glob: 'docs/*.md'

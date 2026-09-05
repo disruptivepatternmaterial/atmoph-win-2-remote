@@ -14,6 +14,11 @@ on:
     - cron: '31 5 * * 1'
   workflow_dispatch:
 
+# Both actions run mutable upstream container images, so this workflow gets no
+# more authority than reading the checkout it validates.
+permissions:
+  contents: read
+
 jobs:
   hassfest:
     runs-on: ubuntu-latest

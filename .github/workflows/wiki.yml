@@ -31,4 +31,7 @@ jobs:
           # --check reads `git log` per source file, so it needs real history.
           fetch-depth: 0
 
-      - uses: disruptivepatternmaterial/wiki-sync-action@main
+      # Pinned to a commit rather than @main: this job holds `contents: write`,
+      # so a mutable reference would let a change to that repository push to
+      # this one. Bump deliberately, after reading the diff.
+      - uses: disruptivepatternmaterial/wiki-sync-action@4a73791f2c1cf734c5742ec620ffb1bf8f6efc4b

@@ -23,16 +23,41 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      # The requested ref reaches the shell only through the environment. Git
+      # permits tag names containing shell metacharacters, and interpolating
+      # one directly into a `run` block would execute it.
+      - name: Resolve the tag to an immutable commit
+        id: resolve
+        env:
+          REQUESTED: ${{ inputs.tag || github.ref_name }}
+        run: |
+          case "$REQUESTED" in
+            v[0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "::error::not a vX.Y.Z tag: $REQUESTED"; exit 1 ;;
+          esac
+          # A fully qualified ref, because an unqualified name resolves to a
+          # branch before a tag: a branch named after a release could
+          # otherwise supply the asset published under that release.
+          sha=$(git ls-remote "https://github.com/${GITHUB_REPOSITORY}.git" \
+            "refs/tags/${REQUESTED}" | cut -f1)
+          if [ -z "$sha" ]; then
+            echo "::error::no such tag: $REQUESTED"
+            exit 1
+          fi
+          echo "tag=$REQUESTED" >> "$GITHUB_OUTPUT"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          ref: ${{ inputs.tag || github.ref }}
+          ref: ${{ steps.resolve.outputs.sha }}
 
       - name: Check the manifest version matches the tag
+        env:
+          TAG: ${{ steps.resolve.outputs.tag }}
         run: |
-          tag="${{ inputs.tag || github.ref_name }}"
           manifest=$(jq -r .version custom_components/atmoph_window/manifest.json)
-          if [ "v${manifest}" != "$tag" ]; then
-            echo "::error::manifest.json version ${manifest} does not match tag ${tag}"
+          if [ "v${manifest}" != "$TAG" ]; then
+            echo "::error::manifest.json version ${manifest} does not match tag ${TAG}"
             exit 1
           fi
 
@@ -41,8 +66,8 @@ jobs:
       - name: Build the HACS asset
         run: |
           cd custom_components/atmoph_window
-          zip -r "${{ github.workspace }}/atmoph_window.zip" . -x '*.pyc' -x '__pycache__/*'
-          cd "${{ github.workspace }}"
+          zip -r "${GITHUB_WORKSPACE}/atmoph_window.zip" . -x '*.pyc' -x '__pycache__/*'
+          cd "${GITHUB_WORKSPACE}"
           unzip -l atmoph_window.zip
 
       # Pushing a tag fires this before any release object exists, so creating
@@ -50,11 +75,11 @@ jobs:
       - name: Publish the release with the asset
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.resolve.outputs.tag }}
         run: |
-          tag="${{ inputs.tag || github.ref_name }}"
-          if gh release view "$tag" >/dev/null 2>&1; then
-            gh release upload "$tag" atmoph_window.zip --clobber
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" atmoph_window.zip --clobber
           else
-            gh release create "$tag" atmoph_window.zip \
-              --title "$tag" --generate-notes
+            gh release create "$TAG" atmoph_window.zip \
+              --title "$TAG" --generate-notes
           fi
