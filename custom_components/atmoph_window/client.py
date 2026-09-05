@@ -21,6 +21,7 @@ from .protocol import (
     VIEW_TITLE_UUID,
     AtmophState,
     JsonObjectStream,
+    TextStream,
     decode_text,
     encode_command,
     encode_setting,
@@ -89,6 +90,12 @@ class AtmophClient:
         self._client = client
         self._on_update = on_update
         self._quick_settings_stream = JsonObjectStream()
+        # The two characteristics Atmoph fills with Japanese, and so the two a
+        # packet boundary can split in the middle of a character.
+        self._text_streams = {
+            VIEW_TITLE_UUID: TextStream(),
+            VIEW_LOCATION_UUID: TextStream(),
+        }
         self._lock = asyncio.Lock()
         self.state = AtmophState()
 
@@ -231,11 +238,15 @@ class AtmophClient:
             if uuid == POWER_UUID:
                 self.state.apply_power(payload)
             elif uuid == VIEW_TITLE_UUID:
-                self.state.view_title = decode_text(payload)
+                if (text := self._text_streams[uuid].feed(payload)) is None:
+                    return
+                self.state.view_title = text
             elif uuid == VIEW_IMAGE_UUID:
                 self.state.view_image_url = decode_text(payload)
             elif uuid == VIEW_LOCATION_UUID:
-                self.state.view_location = decode_text(payload)
+                if (text := self._text_streams[uuid].feed(payload)) is None:
+                    return
+                self.state.view_location = text
             elif uuid == VIEW_ID_UUID:
                 self.state.view_id_supported = True
                 self.state.apply_view_id(payload)

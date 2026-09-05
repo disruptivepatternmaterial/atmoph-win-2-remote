@@ -193,6 +193,42 @@ class JsonObjectStream:
         return results
 
 
+class TextStream:
+    """Decode one text characteristic's notifications across packet boundaries.
+
+    Only a mid-character split is recoverable here. The payload carries no
+    length and no terminator, so two halves of a long ASCII value are
+    indistinguishable from two short values and nothing can reassemble them.
+    A character split in two is different: the decoder can hold the incomplete
+    tail until the rest of it arrives, where decoding each packet on its own
+    raises on both halves and loses the value entirely. That is worth doing
+    for the characteristics whose values are Japanese.
+    """
+
+    def __init__(self) -> None:
+        self._decoder = codecs.getincrementaldecoder("utf-8")()
+        self._pending = ""
+
+    def reset(self) -> None:
+        """Discard a half-received character."""
+        self._decoder.reset()
+        self._pending = ""
+
+    def feed(self, payload: bytes) -> str | None:
+        """Return the decoded value, or None while a character is incomplete."""
+        try:
+            self._pending += self._decoder.decode(bytes(payload))
+        except UnicodeDecodeError:
+            self.reset()
+            raise
+        buffered, _ = self._decoder.getstate()
+        if buffered:
+            return None
+        value = self._pending
+        self._pending = ""
+        return value.strip("\x00\r\n ")
+
+
 def decode_text(payload: bytes) -> str:
     """Decode an Atmoph UTF-8 payload."""
     return bytes(payload).decode("utf-8").strip("\x00\r\n ")
