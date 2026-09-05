@@ -6,6 +6,7 @@ and reused independently.
 
 from __future__ import annotations
 
+import codecs
 import json
 from dataclasses import dataclass, field
 from typing import Final
@@ -142,18 +143,38 @@ class AtmophState:
 
 
 class JsonObjectStream:
-    """Reassemble one or more UTF-8 JSON objects split across BLE packets."""
+    """Reassemble one or more UTF-8 JSON objects split across BLE packets.
+
+    An ATT payload boundary falls wherever the window's MTU puts it, with no
+    regard for character boundaries, so a multi-byte character can arrive in
+    two pieces. Atmoph's view titles and locations are Japanese, which makes
+    that the normal case rather than an edge one. Decoding is therefore
+    incremental: the decoder holds a partial character until the rest of it
+    turns up, where decoding each packet on its own would raise and lose it.
+    """
 
     def __init__(self, max_size: int = 16_384) -> None:
         self._buffer = ""
         self._decoder = json.JSONDecoder()
+        self._text = codecs.getincrementaldecoder("utf-8")()
         self._max_size = max_size
+
+    def reset(self) -> None:
+        """Discard partial input, including a half-received character."""
+        self._buffer = ""
+        self._text.reset()
 
     def feed(self, payload: bytes) -> list[dict[str, object]]:
         """Append bytes and return every complete JSON object."""
-        self._buffer += decode_text(payload)
+        try:
+            self._buffer += self._text.decode(bytes(payload))
+        except UnicodeDecodeError:
+            # Genuinely malformed rather than merely incomplete, so the stream
+            # has lost sync and anything buffered before it is suspect.
+            self.reset()
+            raise
         if len(self._buffer) > self._max_size:
-            self._buffer = ""
+            self.reset()
             raise ValueError("JSON notification buffer exceeded its size limit")
 
         results: list[dict[str, object]] = []

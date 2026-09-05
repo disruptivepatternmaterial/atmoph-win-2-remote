@@ -162,16 +162,28 @@ implemented.
 
 Service `401f7f45-2258-4f9b-8204-f8b301b4dcc5`:
 
-| Characteristic | Ops | Reported value | Looks like |
-|---|---|---|---|
-| `e9c45eb5-fa81-4760-9b1b-24d6cb1d562c` | R, W, N | `LAT2_IUOV6NFQ` | A view id, but inert — see below |
-| `ac0c2536-1713-4be5-97e6-2c281ebb2544` | R, N | `LAT2_IUOV6NFQ,true` | View id plus a flag |
-| `596f4372-1456-4038-8bca-19ef89e6fe3e` | R, W | `{"IsLocked":false}` | Child lock, writable, never exercised |
-| `750b35af-a702-4407-95a9-5af779a61785` | R, W | 32 hex characters | A token or content hash |
-| `e0b4d938-0dec-4e84-ace6-4d81fe4007b6` | R, W | `{}` | Empty JSON object |
-| `d39a8ae0-a159-4efd-8ee4-c10c698f5fe2` | R, W, N | `,N` | Trailing `N` matches the panorama-role encoding |
-| `492783d7-…`, `822962c8-…`, `b95dc23d-…`, `18046ba0-…` | R, W, N | empty | Unknown |
-| `2330f10b-d28c-4b0e-89c7-8dbd05dfa491` | W | — | Write-only, unknown |
+Grouped by how much can be said about each:
+
+**Interpretable.** `596f4372-1456-4038-8bca-19ef89e6fe3e` (read, write) carries
+a one-key JSON document, `IsLocked`, and is the child lock. It is the only
+writable characteristic in this service with an evident purpose, and no attempt
+to write it has been recorded. `e9c45eb5-fa81-4760-9b1b-24d6cb1d562c` (read,
+write, notify) and `ac0c2536-1713-4be5-97e6-2c281ebb2544` (read, notify) both
+carry view identifiers, the latter with a trailing boolean; see
+[Views can be stepped, not chosen](#views-can-be-stepped-not-chosen) for why
+neither is usable for selection.
+
+**Shape known, purpose not.** `750b35af-a702-4407-95a9-5af779a61785` (read,
+write) holds 32 hexadecimal characters, consistent with a token or a digest.
+`d39a8ae0-a159-4efd-8ee4-c10c698f5fe2` (read, write, notify) holds a
+comma-separated pair whose second field uses the same single-letter encoding as
+the panorama role. `e0b4d938-0dec-4e84-ace6-4d81fe4007b6` (read, write) reads
+as an empty JSON object.
+
+**Unknown.** `492783d7-…`, `822962c8-…`, `b95dc23d-…` and `18046ba0-…` are
+readable, writable and notifying, and empty.
+`2330f10b-d28c-4b0e-89c7-8dbd05dfa491` is write-only, so nothing can be learned
+from it without writing to it.
 
 A three-field identity variant `b5b8a6c1-79fb-4220-a5b7-90bbc86a732d`
 (`uuid`, blank, `name`) is reported on hardware and is absent from our
@@ -192,7 +204,13 @@ The app performs this sequence (**App**):
    JSON, quick-settings JSON, and power.
 5. Write command `C` when the remote panel opens so the window announces state.
 
-Home Assistant performs the same operations with two deliberate differences.
+Home Assistant performs the same operations with three deliberate differences.
+
+It **does not request an MTU**. The app asks for 128 explicitly because the
+Android BLE API expects it to; a bleak client cannot portably, since BlueZ and
+CoreBluetooth negotiate on the host's behalf. Nothing may therefore assume a
+payload size: a notification can be split at any byte, including the middle of
+a character, which is why the JSON reader decodes incrementally.
 
 It **subscribes before reading**, reversing steps 3 and 4, so a notification
 that fires while the initial reads are in flight is delivered rather than
@@ -286,21 +304,34 @@ properties as a weak hint and confirm behaviour against reported state.
 
 ### Views can be stepped, not chosen
 
-`e9c45eb5-…` is declared read/write/notify and reads back something shaped
-exactly like a view id, which makes it look like direct view selection. It is
-not (**Reported**, tested rather than assumed):
+No characteristic selects a view. `FW` and `BW` advance and retreat through the
+catalogue one entry at a time, and that is the entire navigation surface this
+protocol offers.
 
-- It does not track the current view. Stepping through four views with `FW`
-  left it pinned to one stale id.
-- Writes are silently discarded — a bare id, an id with revision, and the
-  currently-showing id were all accepted at the ATT layer and changed nothing.
+Two characteristics hold something resembling a view identifier, and it is
+worth being precise about which does what, because the naming invites the wrong
+conclusion:
 
-The characteristic that does track the view is `03cffbfe-…` in the main
-service, holding `<id>/<revision>`, and it is read/notify only. So as far as
-this protocol surface goes, views can only be stepped with `FW` / `BW`.
-Selecting a specific view would need an undiscovered command or one of the
-write-only characteristics (`2330f10b-…`, `d78f7085-…`). Tracked as
+- `03cffbfe-…`, in the main service, is the one that actually follows the
+  display. Its value is `<id>/<revision>` — the same pair the thumbnail URL
+  path is built from. It is read and notify only, so it reports and cannot be
+  commanded.
+- `e9c45eb5-…`, in the second service, declares write as well, and its value
+  has the shape of an identifier. Neither fact means what it appears to.
+  Reported testing found its value frozen on one identifier while the display
+  moved through several, and found writes to it — whether an identifier alone,
+  an identifier with a revision, or the identifier already on screen —
+  acknowledged at the transport level while changing neither the display nor
+  the characteristic's own value.
+
+So a view-selection entity is not implementable today. It would require either
+a command nobody has found or a purpose for one of the two write-only
+characteristics that remain unidentified, `2330f10b-…` and `d78f7085-…`.
+Tracked as
 [issue #7](https://github.com/disruptivepatternmaterial/atmoph-win-2-remote/issues/7).
+
+Everything in this section beyond the two UUIDs and their declared properties
+is **Reported** and has not been reproduced here.
 
 ## Quick settings
 

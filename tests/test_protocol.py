@@ -84,6 +84,30 @@ def test_json_stream_recovers_from_prefix_noise() -> None:
     assert stream.feed(b"true}") == [{"SoundOnly": True}]
 
 
+def test_json_stream_reassembles_a_character_split_across_packets() -> None:
+    """A packet boundary ignores character boundaries.
+
+    Atmoph's titles and locations are Japanese, so a multi-byte character
+    landing across two notifications is ordinary. Decoding each packet on its
+    own raises on both halves, and the client discards a payload it cannot
+    decode, so the update would be lost rather than merely delayed.
+    """
+    document = '{"ViewTitle":"京都"}'.encode()
+    split = document.index("京".encode()) + 1
+
+    stream = JsonObjectStream()
+    assert stream.feed(document[:split]) == []
+    assert stream.feed(document[split:]) == [{"ViewTitle": "京都"}]
+
+
+def test_json_stream_recovers_after_malformed_bytes() -> None:
+    """Undecodable input costs the buffer, not the stream."""
+    stream = JsonObjectStream()
+    with pytest.raises(UnicodeDecodeError):
+        stream.feed(b'{"ViewTitle":"\xff\xfe"}')
+    assert stream.feed(b'{"SoundOnly":true}') == [{"SoundOnly": True}]
+
+
 def test_json_stream_enforces_size_limit() -> None:
     stream = JsonObjectStream(max_size=8)
     with pytest.raises(ValueError, match="size limit"):
