@@ -221,10 +221,21 @@ public and `docs/` is published to the wiki automatically.
   [write-up](https://github.com/glandecki-dev/atmoph-window-yo-ble/blob/main/docs/communication-analysis.md)
   is a genuinely good tutorial on the method.
 - [`samuel95207/Atmoph-HomeAssistant`](https://github.com/samuel95207/Atmoph-HomeAssistant)
-  is a larger Home Assistant implementation with valuable hardware
-  observations. It **declares no license**, so no code, text, or assets were
-  copied from it. Protocol facts were re-derived from our own decompilation and
-  are attributed where a hardware observation originated there.
+  is a larger Home Assistant implementation whose author dumped the GATT table
+  off a real window and published what it contained. It **declares no license**,
+  which means all rights reserved.
+
+  No code or assets were taken from it, and none of this integration derives
+  from reading it. What was taken is factual: UUIDs, values, and observed device
+  behaviour, which describe Atmoph's hardware rather than anything authored.
+  Those facts are marked **Reported** in [docs/PROTOCOL.md](docs/PROTOCOL.md) so
+  a reader can see which claims rest on someone else's hardware rather than on
+  our own analysis.
+
+  An automated review found that some of that documentation had followed the
+  original's wording and structure too closely to be defensible as fact
+  reporting; those passages were rewritten. If you are the author and still see
+  your expression here, open an issue and it will be removed.
 
 ## Licence
 
