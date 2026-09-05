@@ -35,6 +35,15 @@ _POWER_RETRY_DELAY = 2.0
 _POWER_ATTEMPTS = 2
 
 
+class WrongWindowError(Exception):
+    """Raised when a connection reached a window other than the configured one.
+
+    Discovery matches on the advertised name and picks the strongest signal,
+    which is the best an advertisement supports but is not identity. Only the
+    device UUID read over GATT is, so it is checked before anything is written.
+    """
+
+
 class BleakClientLike(Protocol):
     """Subset of BleakClient used by the protocol client."""
 
@@ -88,16 +97,43 @@ class AtmophClient:
         """Return whether the BLE transport is connected."""
         return self._client.is_connected
 
-    async def initialize(self) -> AtmophState:
-        """Subscribe to state changes and perform the app's initial reads."""
+    async def initialize(self, expect_device_uuid: str | None = None) -> AtmophState:
+        """Subscribe to state changes and perform the app's initial reads.
+
+        Subscribing precedes the reads, unlike the app, so a notification that
+        fires while the reads are in flight is delivered rather than missed.
+
+        `expect_device_uuid` is checked between the reads and the first write.
+        Two windows can share an advertised name, and discovery resolves a name
+        to whichever one is loudest, so writing before confirming identity can
+        drive the wrong window.
+        """
         for uuid in self._NOTIFY_UUIDS:
             await self._client.start_notify(uuid, self._notification)
         for uuid in self._OPTIONAL_NOTIFY_UUIDS:
             with contextlib.suppress(Exception):
                 await self._client.start_notify(uuid, self._notification)
+
         await self.refresh()
+
+        reported = self.state.device_uuid
+        if (
+            expect_device_uuid is not None
+            and reported is not None
+            and reported != expect_device_uuid
+        ):
+            raise WrongWindowError(
+                f"Connected window reports {reported}, expected {expect_device_uuid}"
+            )
+
         await self.send_command("connect_notify")
         return self.state
+
+    def set_update_callback(
+        self, on_update: Callable[[AtmophState], None] | None
+    ) -> None:
+        """Attach the state callback once the peripheral's identity is known."""
+        self._on_update = on_update
 
     async def close(self) -> None:
         """Stop notifications before the owning coordinator disconnects."""

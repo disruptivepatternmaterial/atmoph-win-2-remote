@@ -19,7 +19,12 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .client import AtmophClient
-from .const import CONF_ADVERTISED_NAME, DEFAULT_UPDATE_INTERVAL, DOMAIN
+from .const import (
+    CONF_ADVERTISED_NAME,
+    CONF_DEVICE_UUID,
+    DEFAULT_UPDATE_INTERVAL,
+    DOMAIN,
+)
 from .identity import async_device_key
 from .protocol import SERVICE_UUID, AtmophState
 
@@ -113,9 +118,18 @@ class AtmophCoordinator(DataUpdateCoordinator[AtmophState]):
             disconnected_callback=self._disconnected,
             max_attempts=3,
         )
-        self._client = AtmophClient(self._bleak, self._handle_state)
-        await self._client.initialize()
-        return self._client
+        # State is not published until the window has proved it is the one this
+        # entry was set up for, so a wrong window cannot write its view or its
+        # power into this entry's entities on the way to being rejected.
+        client = AtmophClient(self._bleak)
+        try:
+            await client.initialize(self.config_entry.data.get(CONF_DEVICE_UUID))
+        except Exception:
+            await self._async_disconnect()
+            raise
+        client.set_update_callback(self._handle_state)
+        self._client = client
+        return client
 
     def _resolve_device(self) -> BLEDevice | None:
         candidates = [

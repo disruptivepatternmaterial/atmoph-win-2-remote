@@ -23,16 +23,17 @@ from .fakes import (
     SECOND_WINDOW_ADDRESS,
     SECOND_WINDOW_NAME,
     WINDOW_ADDRESS,
+    WINDOW_NAME,
     FakeBluetooth,
     device_uuid_for,
     make_service_info,
 )
 
 
-def target(hass: HomeAssistant, address: str = WINDOW_ADDRESS) -> dict[str, str]:
+def target(hass: HomeAssistant, name: str = WINDOW_NAME) -> dict[str, str]:
     """Return a service target naming one window by one of its entities."""
     entity_id = er.async_get(hass).async_get_entity_id(
-        "switch", DOMAIN, f"{device_uuid_for(address)}_display"
+        "switch", DOMAIN, f"{device_uuid_for(name)}_display"
     )
     assert entity_id is not None
     return {"entity_id": entity_id}
@@ -161,7 +162,7 @@ async def test_send_command_only_reaches_the_targeted_window(
     await hass.services.async_call(
         DOMAIN,
         SERVICE_SEND_COMMAND,
-        {"command": "next_view"} | target(hass, SECOND_WINDOW_ADDRESS),
+        {"command": "next_view"} | target(hass, SECOND_WINDOW_NAME),
         blocking=True,
     )
 

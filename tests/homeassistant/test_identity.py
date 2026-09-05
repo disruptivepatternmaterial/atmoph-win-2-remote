@@ -196,13 +196,16 @@ async def test_a_uuid_reported_late_is_adopted_without_losing_the_entity_ids(
     assert only_device(hass, config_entry).id == device_id
 
 
-async def test_an_adopted_uuid_is_never_replaced_by_a_different_one(
+async def test_a_window_reporting_another_uuid_is_refused_not_followed(
     hass: HomeAssistant, fake_bluetooth: FakeBluetooth, config_entry: MockConfigEntry
 ) -> None:
-    """A window answering with another UUID is another window, not a rename.
+    """A window answering with another UUID is another window.
 
-    Following it would orphan the history of the window the entry was set up
-    for, so the first UUID an entry adopts is the one it keeps.
+    Discovery resolves an advertised name to whichever window is loudest, which
+    is all an advertisement supports but is not identity. Two windows can share
+    a name, so the alternative to refusing is driving the wrong one: sending it
+    commands and writing its view and power into this entry's entities. The
+    stored UUID must also survive, or the next run would adopt the impostor.
     """
     config_entry.add_to_hass(hass)
     hass.config_entries.async_update_entry(
@@ -210,13 +213,38 @@ async def test_an_adopted_uuid_is_never_replaced_by_a_different_one(
         data={**config_entry.data, CONF_DEVICE_UUID: "device-uuid-adopted-earlier"},
     )
 
-    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    assert not await hass.config_entries.async_setup(config_entry.entry_id)
     await hass.async_block_till_done()
 
+    assert config_entry.state is ConfigEntryState.SETUP_RETRY
     assert config_entry.data[CONF_DEVICE_UUID] == "device-uuid-adopted-earlier"
-    assert only_device(hass, config_entry).identifiers == {
-        (DOMAIN, "device-uuid-adopted-earlier")
-    }
+    # Nothing was written to a window that failed to prove which one it is.
+    assert fake_bluetooth.client.commands == []
+    assert not fake_bluetooth.client.is_connected
+
+
+async def test_a_rotated_address_is_still_the_same_window(
+    hass: HomeAssistant, fake_bluetooth: FakeBluetooth, loaded_entry: MockConfigEntry
+) -> None:
+    """Identity has to survive the address change it exists to survive.
+
+    The device UUID is read over GATT precisely because the address rotates, so
+    reconnecting at a new address must not look like reaching a different
+    window - which is what the identity check would report if the fake tied its
+    UUID to its address.
+    """
+    from .fakes import ROTATED_ADDRESS, make_service_info
+
+    await fake_bluetooth.client.disconnect()
+    fake_bluetooth.service_infos = [make_service_info(address=ROTATED_ADDRESS)]
+
+    await hass.config_entries.async_reload(loaded_entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert loaded_entry.state is ConfigEntryState.LOADED
+    assert fake_bluetooth.client.address == ROTATED_ADDRESS
+    assert loaded_entry.data[CONF_DEVICE_UUID] == device_uuid_for()
+    assert_every_entity_is_keyed_on(hass, loaded_entry, device_uuid_for())
 
 
 async def test_the_device_records_no_bluetooth_connection(
