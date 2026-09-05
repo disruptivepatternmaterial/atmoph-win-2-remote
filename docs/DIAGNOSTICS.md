@@ -183,9 +183,17 @@ shows the Wi-Fi association attempt failing and says why, and `dumpsys wifi`
 prints the driver's own view of the country code and the channel list it will
 accept.
 
-Whether a Window 2 exposes any diagnostic port is unknown and is
-[issue #6](https://github.com/disruptivepatternmaterial/atmoph-win-2-remote/issues/6).
-There is no LAN *control* API — that question is closed and the answer is no.
+It does not. A full 1–65535 TCP scan of a Window 2 found exactly one open port
+— `53/tcp`, which answers nothing to a banner grab or an HTTP request — and
+all seven Android diagnostic ports closed. Every other port actively refused
+rather than timing out, which proves a live host with nothing listening rather
+than a scan being swallowed. So there is no `logcat`, no `dumpsys wifi`, and no
+LAN control API either.
+
+The scan is recorded in
+[issue #6](https://github.com/disruptivepatternmaterial/atmoph-win-2-remote/issues/6),
+which is closed. Re-run the probe below only to confirm it on your own unit;
+BLE is the diagnostic path.
 
 First find the window. It is very likely not on the subnet your workstation is
 on; get the current lease from the DHCP server rather than guessing.

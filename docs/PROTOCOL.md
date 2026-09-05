@@ -152,8 +152,13 @@ Where they disagree with hardware, hardware wins; see
 ### A second service the app never mentions
 
 Dumping the GATT table off a real window turns up an entire second primary
-service, absent from the app bytecode. Every entry here is **Reported** only —
-none of it appears in our decompilation, and none is implemented.
+service. The service UUID itself is absent from the app bytecode, but six of
+its characteristics do appear in the decompilation's UUID table, so the app
+knows of them while binding none: `e9c45eb5-…`, `ac0c2536-…`, `750b35af-…`,
+`492783d7-…`, `822962c8-…`, and `2330f10b-…`.
+
+Every value and behaviour below is **Reported** only, and none of it is
+implemented.
 
 Service `401f7f45-2258-4f9b-8204-f8b301b4dcc5`:
 
@@ -167,9 +172,6 @@ Service `401f7f45-2258-4f9b-8204-f8b301b4dcc5`:
 | `d39a8ae0-a159-4efd-8ee4-c10c698f5fe2` | R, W, N | `,N` | Trailing `N` matches the panorama-role encoding |
 | `492783d7-…`, `822962c8-…`, `b95dc23d-…`, `18046ba0-…` | R, W, N | empty | Unknown |
 | `2330f10b-d28c-4b0e-89c7-8dbd05dfa491` | W | — | Write-only, unknown |
-
-`492783d7-…`, `822962c8-…`, and `2330f10b-…` do appear in our decompilation's
-UUID table, so the app knows of them while binding none.
 
 A three-field identity variant `b5b8a6c1-79fb-4220-a5b7-90bbc86a732d`
 (`uuid`, blank, `name`) is reported on hardware and is absent from our
@@ -190,10 +192,17 @@ The app performs this sequence (**App**):
    JSON, quick-settings JSON, and power.
 5. Write command `C` when the remote panel opens so the window announces state.
 
-Home Assistant follows the same ordering, with one deliberate addition: it also
-**reads** the power characteristic, which the app never does. Power notifies
-only on change, so nothing arrives at connect and the display state would
-otherwise stay unknown until someone toggled the screen. (**Reported**)
+Home Assistant performs the same operations with two deliberate differences.
+
+It **subscribes before reading**, reversing steps 3 and 4, so a notification
+that fires while the initial reads are in flight is delivered rather than
+missed.
+
+It also **reads** the power characteristic, which the app never does. Power
+notifies only on change, so nothing arrives at connect and the display state
+would otherwise stay unknown until someone toggled the screen. (**Reported**)
+
+See `initialize` in `custom_components/atmoph_window/client.py`.
 
 ## Remote-control characteristic
 
@@ -231,8 +240,10 @@ double tap and a jump to the search screen are one-shot inputs whose result
 depends on what the window is already showing, and search leads to a text field
 this integration deliberately cannot fill, so neither earns a button on a
 dashboard. Both are sent by the `atmoph_window.send_command` service, which
-validates its argument against the same table above and refuses anything not in
-it. That service also covers `S` and `C`, which entities own for other reasons:
+validates its argument and refuses anything it does not recognise. The
+argument is the name the integration uses, not the token or the app's enum:
+`double_tap` and `search`, never `DT`, `VS`, or `DoubleTap`. `services.yaml`
+offers the full list in the picker. That service also covers `S` and `C`, which entities own for other reasons:
 `S` belongs to the display switch because only the switch performs the
 read-and-confirm dance the toggle needs, and `C` runs at connect.
 
@@ -412,6 +423,9 @@ Nothing here has been checked against an AW102 by this project. Doing so is
 See [ANDROID-APP-ANALYSIS.md](ANDROID-APP-ANALYSIS.md) for acquisition,
 tooling, and the class-by-class walkthrough.
 
-Whether the window exposes any network control surface is tracked in
-[issue #6](https://github.com/disruptivepatternmaterial/atmoph-win-2-remote/issues/6).
-The short answer is that the app is BLE-only, so this integration is too.
+Whether the window exposes any network control surface was settled in
+[issue #6](https://github.com/disruptivepatternmaterial/atmoph-win-2-remote/issues/6),
+now closed: a full 1–65535 TCP scan of a real unit found one open port,
+`53/tcp`, silent to both a banner grab and an HTTP request, and every Android
+diagnostic port closed. The app is BLE-only and so is the window, so this
+integration is too.
