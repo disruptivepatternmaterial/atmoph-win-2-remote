@@ -19,6 +19,7 @@ import pytest  # noqa: E402
 from homeassistant.core import HomeAssistant  # noqa: E402
 from pytest_homeassistant_custom_component.common import MockConfigEntry  # noqa: E402
 
+from custom_components.atmoph_window import client as client_module  # noqa: E402
 from custom_components.atmoph_window.config_flow import (  # noqa: E402
     AtmophWindowConfigFlow,
 )
@@ -27,6 +28,7 @@ from custom_components.atmoph_window.const import (  # noqa: E402
     CONF_DEVICE_UUID,
     DOMAIN,
 )
+from tests.window import FakeClock  # noqa: E402
 
 from .fakes import WINDOW_ADDRESS, WINDOW_NAME, FakeBluetooth  # noqa: E402
 
@@ -47,22 +49,22 @@ def _bluetooth_dependency(hass: HomeAssistant) -> None:
 
 
 @pytest.fixture(autouse=True)
-def _instant_sleep() -> Generator[None]:
-    """Collapse the display power confirmation polling to nothing."""
+def clock() -> Generator[FakeClock]:
+    """Replace the client's waiting with a clock that records what it waited.
 
-    async def no_sleep(delay: float) -> None:
-        del delay
-
-    with patch(
-        "custom_components.atmoph_window.client.asyncio.sleep", side_effect=no_sleep
-    ):
-        yield
+    The display ignores a toggle sent within about a second of one that took
+    effect, so the pause before a retry is behaviour rather than overhead.
+    Collapsing every sleep to nothing would leave it untested.
+    """
+    virtual = FakeClock()
+    with patch.object(client_module, "asyncio", virtual.patched_asyncio()):
+        yield virtual
 
 
 @pytest.fixture
-def fake_bluetooth() -> Generator[FakeBluetooth]:
+def fake_bluetooth(clock: FakeClock) -> Generator[FakeBluetooth]:
     """Patch every Bluetooth entry point the integration reaches for."""
-    fake = FakeBluetooth()
+    fake = FakeBluetooth(clock)
     with (
         patch(
             "homeassistant.components.bluetooth.async_discovered_service_info",

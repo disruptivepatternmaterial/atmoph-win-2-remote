@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import sys
 from collections.abc import Callable
-from dataclasses import asdict, dataclass
+from dataclasses import asdict
 from typing import Any
 
 import pytest
@@ -29,6 +29,14 @@ from custom_components.atmoph_window.protocol import (
     TextStream,
     encode_command,
     encode_setting,
+)
+from tests.window import (
+    REPORTED_SETTINGS,
+    TOGGLE_DROP_WINDOW,
+    DisplayPower,
+    FakeCharacteristic,
+    FakeClock,
+    Toggle,
 )
 
 
@@ -212,6 +220,13 @@ def test_local_write_keeps_the_reported_bounds() -> None:
     assert state.quick_settings["WidgetsVisible"] is False
 
 
+def test_a_level_that_is_not_a_level_is_not_guessed_at() -> None:
+    """A malformed level has no value to show and no bounds to validate against."""
+    assert Level.from_wire({"min": 1, "max": 10}) is None
+    assert Level.from_wire({"min": "low", "max": "high", "value": "mid"}) is None
+    assert Level.from_wire(True) is None
+
+
 def test_invalid_power_payload_is_rejected() -> None:
     state = AtmophState()
     with pytest.raises(ValueError, match="Unexpected power payload"):
@@ -241,80 +256,11 @@ def test_an_empty_view_id_reports_nothing_rather_than_an_empty_string() -> None:
     assert state.view_revision is None
 
 
-# The bounds one reported device gave. They are per-device and wider than a
-# ten-step slider suggests, so a fake that reports a narrow range lets a
-# hardcoded one pass.
-REPORTED_SETTINGS = {
-    "ScreenBrightness": {"min": 1, "max": 25, "value": 6},
-    "LandscapeVolumeLevel": {"min": 0, "max": 24, "value": 12},
-    "SoundscapeVolumeLevel": {"min": 0, "max": 20, "value": 8},
-    "LedBrightness": {"min": 0, "max": 20, "value": 4},
-    "CurrentDecoration": {"min": 0, "max": 19, "value": 3},
-    "SoundscapeLayer": {"min": 0, "max": 5, "value": 2},
-    "WidgetsVisible": True,
-    "DailyRoutineEnable": False,
-    "SoundOnly": False,
-}
-
-# A toggle sent within roughly a second of one that took effect is discarded,
-# with no ATT error and no state change.
-TOGGLE_DROP_WINDOW = 1.0
-
-
-class FakeCharacteristic:
-    """The object bleak hands to a notification callback.
-
-    Bleak passes the characteristic the notification came from, never its
-    UUID, so a fake that passes a bare string would let the client read
-    `sender` directly and still pass every test.
-    """
-
-    def __init__(self, uuid: str) -> None:
-        self.uuid = uuid
-
-    def __str__(self) -> str:
-        # Bleak's own string form is a description, not the UUID, so a client
-        # that stringifies the characteristic has to fail here too.
-        return f"<FakeCharacteristic at {id(self):#x}>"
-
-
-class FakeClock:
-    """A virtual clock that advances only when the client waits.
-
-    The delays are part of what is under test - the pause before a retry has
-    to outlast the window in which the display ignores a toggle - so they are
-    recorded rather than collapsed to nothing.
-    """
-
-    def __init__(self) -> None:
-        self.now = 0.0
-        self.sleeps: list[float] = []
-
-    async def sleep(self, delay: float) -> None:
-        """Advance the clock instead of waiting."""
-        self.sleeps.append(delay)
-        self.now += delay
-
-    @property
-    def last_sleep(self) -> float:
-        """Return how long the client last waited before acting."""
-        return self.sleeps[-1] if self.sleeps else 0.0
-
-
-@dataclass(frozen=True, slots=True)
-class Toggle:
-    """One `S` write, and whether the display was still ignoring toggles."""
-
-    at: float
-    pause: float
-    accepted: bool
-
-
 @pytest.fixture
 def clock(monkeypatch: pytest.MonkeyPatch) -> FakeClock:
     """Replace the client's waiting with a clock that records what it waited."""
     virtual = FakeClock()
-    monkeypatch.setattr(client_module.asyncio, "sleep", virtual.sleep)
+    monkeypatch.setattr(client_module, "asyncio", virtual.patched_asyncio())
     return virtual
 
 
@@ -346,11 +292,14 @@ class FakeBleakClient:
         self.writes: list[tuple[str, bytes, bool]] = []
         self.notifications: dict[str, Callable[[Any, bytearray], None]] = {}
         self.reads: list[str] = []
-        self.toggles: list[Toggle] = []
-        self.clock = clock if clock is not None else FakeClock()
-        # None stands for a display nobody has touched recently, so the next
-        # toggle lands outside the window in which one is discarded.
-        self._accepted_at = last_toggle_at
+        self.display = DisplayPower(
+            clock if clock is not None else FakeClock(), last_toggle_at
+        )
+
+    @property
+    def toggles(self) -> list[Toggle]:
+        """Return every `S` write and whether the display acted on it."""
+        return self.display.toggles
 
     async def read_gatt_char(self, char_specifier: str) -> bytearray:
         self.reads.append(char_specifier)
@@ -363,22 +312,10 @@ class FakeBleakClient:
         # The window advertises write on it and ignores both directions, so
         # anything that relies on one has to fail here.
         self.writes.append((char_specifier, data, response))
-        if char_specifier == COMMAND_UUID and data == b"S":
-            self._toggle_display()
-
-    def _toggle_display(self) -> None:
-        """Apply a toggle unless it arrived while the display was ignoring them."""
-        accepted = (
-            self._accepted_at is None
-            or self.clock.now - self._accepted_at > TOGGLE_DROP_WINDOW
-        )
-        self.toggles.append(Toggle(self.clock.now, self.clock.last_sleep, accepted))
-        if not accepted:
-            return
-        self._accepted_at = self.clock.now
-        self.values[POWER_UUID] = (
-            b"false" if self.values[POWER_UUID] == b"true" else b"true"
-        )
+        if char_specifier == COMMAND_UUID and data == b"S" and self.display.toggle():
+            self.values[POWER_UUID] = (
+                b"false" if self.values[POWER_UUID] == b"true" else b"true"
+            )
 
     async def start_notify(
         self, char_specifier: str, callback: Callable[[Any, bytearray], None]
@@ -560,6 +497,40 @@ async def test_a_notification_from_an_unread_characteristic_changes_nothing() ->
 
     assert asdict(client.state) == before
     assert updates == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("uuid", "payload"),
+    [
+        (POWER_UUID, b"dozing"),
+        (VIEW_TITLE_UUID, b"\xff\xfe"),
+        (QUICK_SETTINGS_UUID, b"\xff\xfe"),
+    ],
+)
+async def test_a_payload_that_cannot_be_parsed_costs_only_itself(
+    uuid: str, payload: bytes
+) -> None:
+    """A notification arrives on bleak's thread, where raising helps nobody.
+
+    The subscription would survive but the caller is a backend callback with
+    nothing to catch it, so a window sending one payload the protocol does not
+    describe has to cost that payload and not the connection.
+    """
+    peripheral = FakeBleakClient()
+    updates: list[AtmophState] = []
+    client = AtmophClient(peripheral, updates.append)
+    await client.initialize()
+    before = asdict(client.state)
+    updates.clear()
+
+    peripheral.notify(uuid, payload)
+
+    assert asdict(client.state) == before
+    assert updates == []
+    # Still listening, and still able to take the next good payload.
+    peripheral.notify(POWER_UUID, b"false")
+    assert client.state.power is False
 
 
 @pytest.mark.asyncio
