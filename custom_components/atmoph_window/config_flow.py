@@ -83,7 +83,11 @@ class AtmophWindowConfigFlow(ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             name = user_input[CONF_ADVERTISED_NAME]
-            info = infos[name]
+            # The list is rebuilt on submit while the form was validated
+            # against the one that was rendered, so a window that stopped
+            # advertising in between passes validation and is gone by here.
+            if (info := infos.get(name)) is None:
+                return self.async_abort(reason="no_devices_found")
             await self.async_set_unique_id(name)
             self._abort_if_unique_id_configured()
             return self.async_create_entry(

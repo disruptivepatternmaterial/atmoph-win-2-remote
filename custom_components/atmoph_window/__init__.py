@@ -37,8 +37,6 @@ async def async_migrate_entry(hass: HomeAssistant, entry: AtmophConfigEntry) -> 
     before setup, so it starts empty and `async_setup_entry` adopts the value
     the first refresh reports.
     """
-    if entry.version > 2:
-        return False
     if entry.version == 1:
         hass.config_entries.async_update_entry(
             entry, data={**entry.data, CONF_DEVICE_UUID: None}, version=2

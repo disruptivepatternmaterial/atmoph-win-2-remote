@@ -19,6 +19,9 @@
     }
   },
   "exceptions": {
+    "duplicate_device_uuid": {
+      "message": "This window reports the same device UUID as {name}, which is already set up. Remove one of the two entries."
+    },
     "no_window_targeted": {
       "message": "No loaded Atmoph Window was targeted. Choose the window to act on."
     },
@@ -37,33 +40,75 @@
   },
   "entity": {
     "button": {
-      "back": { "name": "Back" },
-      "down": { "name": "Down" },
-      "left": { "name": "Left" },
-      "menu": { "name": "Menu" },
-      "next_view": { "name": "Next view" },
-      "previous_view": { "name": "Previous view" },
-      "quick_menu": { "name": "Quick menu" },
-      "right": { "name": "Right" },
-      "tap": { "name": "Select" },
-      "up": { "name": "Up" },
-      "views": { "name": "Views" }
+      "back": {
+        "name": "Back"
+      },
+      "down": {
+        "name": "Down"
+      },
+      "left": {
+        "name": "Left"
+      },
+      "menu": {
+        "name": "Menu"
+      },
+      "next_view": {
+        "name": "Next view"
+      },
+      "previous_view": {
+        "name": "Previous view"
+      },
+      "quick_menu": {
+        "name": "Quick menu"
+      },
+      "right": {
+        "name": "Right"
+      },
+      "tap": {
+        "name": "Select"
+      },
+      "up": {
+        "name": "Up"
+      },
+      "views": {
+        "name": "Views"
+      }
     },
     "number": {
-      "landscape_volume": { "name": "Landscape volume" },
-      "led_brightness": { "name": "LED brightness" },
-      "screen_brightness": { "name": "Screen brightness" },
-      "soundscape_volume": { "name": "Soundscape volume" }
+      "landscape_volume": {
+        "name": "Landscape volume"
+      },
+      "led_brightness": {
+        "name": "LED brightness"
+      },
+      "screen_brightness": {
+        "name": "Screen brightness"
+      },
+      "soundscape_volume": {
+        "name": "Soundscape volume"
+      }
     },
     "sensor": {
-      "current_view": { "name": "Current view" },
-      "view_id": { "name": "View ID" }
+      "current_view": {
+        "name": "Current view"
+      },
+      "view_id": {
+        "name": "View ID"
+      }
     },
     "switch": {
-      "daily_routine": { "name": "Daily routine" },
-      "display": { "name": "Display" },
-      "sound_only": { "name": "Sound only" },
-      "widgets_visible": { "name": "Widgets" }
+      "daily_routine": {
+        "name": "Daily routine"
+      },
+      "display": {
+        "name": "Display"
+      },
+      "sound_only": {
+        "name": "Sound only"
+      },
+      "widgets_visible": {
+        "name": "Widgets"
+      }
     }
   },
   "services": {

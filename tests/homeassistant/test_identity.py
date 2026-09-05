@@ -16,9 +16,13 @@ from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.atmoph_window.config_flow import AtmophWindowConfigFlow
-from custom_components.atmoph_window.const import CONF_DEVICE_UUID, DOMAIN
+from custom_components.atmoph_window.const import (
+    CONF_ADVERTISED_NAME,
+    CONF_DEVICE_UUID,
+    DOMAIN,
+)
 
-from .fakes import WINDOW_NAME, FakeBluetooth, device_uuid_for
+from .fakes import WINDOW_ADDRESS, WINDOW_NAME, FakeBluetooth, device_uuid_for
 
 # One entity per platform, so a migration that only rewrites some of them is
 # caught. The renamed entity id stands in for everything a user has invested in
@@ -225,6 +229,156 @@ async def test_the_device_records_no_bluetooth_connection(
     it to next.
     """
     assert only_device(hass, loaded_entry).connections == set()
+
+
+async def test_a_unique_id_already_taken_blocks_the_whole_move(
+    hass: HomeAssistant,
+    fake_bluetooth: FakeBluetooth,
+    legacy_config_entry: MockConfigEntry,
+) -> None:
+    """A blocked rekey has to move nothing rather than some of it.
+
+    Home Assistant refuses a unique id another entity of the same platform
+    already holds, and that check spans every config entry while the rewrite
+    walks only one. Applying the moves one at a time would strand the entry
+    across two identity namespaces, where every retry fails the same way.
+    """
+    legacy_config_entry.add_to_hass(hass)
+    before = seed_legacy_registry_entries(hass, legacy_config_entry)
+
+    # Uniqueness is scoped to the platform, not to the owning entry, so an
+    # unowned row is enough to reproduce the collision.
+    er.async_get(hass).async_get_or_create(
+        "switch", DOMAIN, f"{device_uuid_for()}_display"
+    )
+
+    assert await hass.config_entries.async_setup(legacy_config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    # Usable and wholly on its old key, not half on each.
+    assert legacy_config_entry.state is ConfigEntryState.LOADED
+    assert legacy_config_entry.data[CONF_DEVICE_UUID] is None
+    registry = er.async_get(hass)
+    for platform, (key, _) in LEGACY_ENTITIES.items():
+        assert (
+            registry.async_get_entity_id(platform, DOMAIN, f"{WINDOW_NAME}_{key}")
+            == before[key]
+        )
+    assert only_device(hass, legacy_config_entry).identifiers == {(DOMAIN, WINDOW_NAME)}
+
+
+async def test_a_uuid_another_entry_holds_is_refused_rather_than_shared(
+    hass: HomeAssistant, fake_bluetooth: FakeBluetooth, loaded_entry: MockConfigEntry
+) -> None:
+    """Two entries on one UUID cannot both work, so the second must fail loudly.
+
+    Sharing it would leave the younger entry loaded, entity-less because every
+    unique id collides, and holding a connection to a window the older entry
+    already owns - invisible on the device page and unreachable by a service
+    call, because neither resolves to an entry that owns nothing.
+    """
+    assert loaded_entry.data[CONF_DEVICE_UUID] == device_uuid_for()
+
+    # A second entry that reaches the same physical window, as a duplicate
+    # advertised name or a re-add under a variant would.
+    duplicate = MockConfigEntry(
+        domain=DOMAIN,
+        title="Bedroom Window",
+        unique_id="Bedroom Window",
+        version=AtmophWindowConfigFlow.VERSION,
+        data={
+            CONF_ADVERTISED_NAME: "Bedroom Window",
+            "address": WINDOW_ADDRESS,
+            CONF_DEVICE_UUID: None,
+        },
+    )
+    duplicate.add_to_hass(hass)
+
+    assert not await hass.config_entries.async_setup(duplicate.entry_id)
+    await hass.async_block_till_done()
+
+    assert duplicate.state is ConfigEntryState.SETUP_ERROR
+    assert duplicate.data[CONF_DEVICE_UUID] is None
+    assert unique_ids(hass, duplicate) == set()
+    # The window that was already working is untouched.
+    assert_every_entity_is_keyed_on(hass, loaded_entry, device_uuid_for())
+
+
+async def test_a_registry_left_behind_by_a_lost_write_is_repaired(
+    hass: HomeAssistant, fake_bluetooth: FakeBluetooth, config_entry: MockConfigEntry
+) -> None:
+    """Adoption spans two stores that flush at different times.
+
+    Config entries are written after a second and the registries after ten, or
+    a hundred and eighty during startup, so a crash in between leaves the entry
+    claiming a UUID while the registries still hold name-keyed rows. Gating the
+    rekey on the UUID being unset would then never repair it, and the next run
+    would build a duplicate set of entities beside the orphaned ones.
+    """
+    config_entry.add_to_hass(hass)
+    hass.config_entries.async_update_entry(
+        config_entry, data={**config_entry.data, CONF_DEVICE_UUID: device_uuid_for()}
+    )
+    before = seed_legacy_registry_entries(hass, config_entry)
+
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    registry = er.async_get(hass)
+    for platform, (key, _) in LEGACY_ENTITIES.items():
+        assert (
+            registry.async_get_entity_id(platform, DOMAIN, f"{device_uuid_for()}_{key}")
+            == before[key]
+        ), f"{key} was not repaired onto the stored key"
+        assert (
+            registry.async_get_entity_id(platform, DOMAIN, f"{WINDOW_NAME}_{key}")
+            is None
+        )
+    assert only_device(hass, config_entry).id == before["device"]
+
+
+async def test_an_emptied_device_row_is_removed_rather_than_left_on_screen(
+    hass: HomeAssistant, fake_bluetooth: FakeBluetooth, config_entry: MockConfigEntry
+) -> None:
+    """A stale row referencing a live entry is never pruned automatically.
+
+    Home Assistant only orphans a device row that no entity and no config entry
+    references, so a name-keyed row left beside the adopted one stays visible
+    forever as a second Atmoph device with nothing on it.
+    """
+    config_entry.add_to_hass(hass)
+    hass.config_entries.async_update_entry(
+        config_entry, data={**config_entry.data, CONF_DEVICE_UUID: device_uuid_for()}
+    )
+    devices = dr.async_get(hass)
+    # The shape two runs of a gated rekey leave: the adopted row holding the
+    # entities, and an emptied name-keyed row beside it. Renaming onto an
+    # identifier this entry already holds is refused, so the stale row can only
+    # be removed, never merged.
+    adopted = devices.async_get_or_create(
+        config_entry_id=config_entry.entry_id,
+        identifiers={(DOMAIN, device_uuid_for())},
+        name=WINDOW_NAME,
+    )
+    er.async_get(hass).async_get_or_create(
+        "switch",
+        DOMAIN,
+        f"{device_uuid_for()}_display",
+        config_entry=config_entry,
+        device_id=adopted.id,
+    )
+    stale = devices.async_get_or_create(
+        config_entry_id=config_entry.entry_id,
+        identifiers={(DOMAIN, WINDOW_NAME)},
+        name=WINDOW_NAME,
+    )
+    assert stale.id != adopted.id
+
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert devices.async_get(stale.id) is None
+    assert only_device(hass, config_entry).identifiers == {(DOMAIN, device_uuid_for())}
 
 
 async def test_a_0_2_1_entry_whose_window_reports_no_uuid_still_reaches_version_2(

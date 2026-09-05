@@ -14,6 +14,13 @@ So the entry is discovered by name and then adopts the UUID the first time a
 window reports one. The switch is a registry migration rather than a new set
 of identifiers: entity ids and their history survive it, which is what makes
 adopting late safe rather than destructive.
+
+Adoption writes to two stores that flush independently — config entries after
+a second, the registries after ten or, during startup, a hundred and eighty.
+A crash between the two would otherwise leave the entry claiming a UUID while
+the registries still hold name-keyed rows, with nothing to repair it. So the
+registry side is reconciled against the stored key on every setup rather than
+only on the run that adopts.
 """
 
 from __future__ import annotations
@@ -22,6 +29,7 @@ import logging
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import ConfigEntryError
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 
@@ -52,46 +60,121 @@ async def async_adopt_device_uuid(
     window answering with a different one is a different window, and following
     it would orphan the history of the one the entry was set up for.
     """
-    if not device_uuid or entry.data.get(CONF_DEVICE_UUID):
+    name = entry.data[CONF_ADVERTISED_NAME]
+
+    if device_uuid and not entry.data.get(CONF_DEVICE_UUID):
+        _async_refuse_claimed_uuid(hass, entry, device_uuid)
+        # Leaving the entry on its name is recoverable; a half-moved registry
+        # is not, so a blocked rekey must not be followed by the entry write.
+        if not await _async_reconcile(hass, entry, name, device_uuid):
+            return
+        hass.config_entries.async_update_entry(
+            entry, data={**entry.data, CONF_DEVICE_UUID: device_uuid}
+        )
         return
 
-    previous = entry.data[CONF_ADVERTISED_NAME]
-    if previous != device_uuid:
-        await _async_rekey_entities(hass, entry, previous, device_uuid)
-        _async_rekey_device(hass, previous, device_uuid)
-        _LOGGER.debug("Moved %s onto its device UUID", previous)
-
-    hass.config_entries.async_update_entry(
-        entry, data={**entry.data, CONF_DEVICE_UUID: device_uuid}
-    )
-
-
-async def _async_rekey_entities(
-    hass: HomeAssistant, entry: ConfigEntry, previous: str, device_uuid: str
-) -> None:
-    """Rewrite the unique id prefix of every entity the entry owns."""
-    prefix = f"{previous}_"
-
-    @callback
-    def _rekey(registry_entry: er.RegistryEntry) -> dict[str, str] | None:
-        if not registry_entry.unique_id.startswith(prefix):
-            return None
-        suffix = registry_entry.unique_id.removeprefix(prefix)
-        return {"new_unique_id": f"{device_uuid}_{suffix}"}
-
-    await er.async_migrate_entries(hass, entry.entry_id, _rekey)
+    # Repair a rekey whose registry write was lost after the entry write
+    # landed. A no-op whenever the two stores already agree.
+    await _async_reconcile(hass, entry, name, async_device_key(entry))
 
 
 @callback
-def _async_rekey_device(hass: HomeAssistant, previous: str, device_uuid: str) -> None:
-    """Rename the device registry row so the device page keeps its identity."""
+def _async_refuse_claimed_uuid(
+    hass: HomeAssistant, entry: ConfigEntry, device_uuid: str
+) -> None:
+    """Stop a second entry adopting a UUID another one already holds.
+
+    Both entries would otherwise key their entities identically, and Home
+    Assistant rejects the duplicates rather than merging them — leaving the
+    younger entry loaded, entity-less, and holding a connection to a window
+    the older entry already owns. Failing loudly is the kinder outcome.
+    """
+    for other in hass.config_entries.async_entries(DOMAIN):
+        if other.entry_id != entry.entry_id and (
+            other.data.get(CONF_DEVICE_UUID) == device_uuid
+        ):
+            raise ConfigEntryError(
+                translation_domain=DOMAIN,
+                translation_key="duplicate_device_uuid",
+                translation_placeholders={"name": other.title},
+            )
+
+
+async def _async_reconcile(
+    hass: HomeAssistant, entry: ConfigEntry, previous: str, key: str
+) -> bool:
+    """Move this entry's registry rows onto `key`, or leave them all alone."""
+    if previous == key:
+        return True
+    if not _async_rekey_entities(hass, entry, previous, key):
+        return False
+    _async_rekey_device(hass, entry, previous, key)
+    _LOGGER.debug("Moved %s onto %s", previous, key)
+    return True
+
+
+@callback
+def _async_rekey_entities(
+    hass: HomeAssistant, entry: ConfigEntry, previous: str, key: str
+) -> bool:
+    """Rewrite the unique id prefix of every entity, or of none of them.
+
+    Home Assistant refuses a unique id already used by another entity of the
+    same platform, and that check spans every config entry while this rewrite
+    only walks one. So the targets are checked up front: applying the moves
+    one at a time and hitting a conflict partway would strand the entry across
+    two identity namespaces, where every retry fails identically.
+    """
+    registry = er.async_get(hass)
+    prefix = f"{previous}_"
+    moves: list[tuple[str, str]] = []
+
+    for item in er.async_entries_for_config_entry(registry, entry.entry_id):
+        if not item.unique_id.startswith(prefix):
+            continue
+        new_unique_id = f"{key}_{item.unique_id.removeprefix(prefix)}"
+        taken = registry.async_get_entity_id(item.domain, DOMAIN, new_unique_id)
+        if taken is not None and taken != item.entity_id:
+            _LOGGER.warning(
+                "Not moving %s onto %s: %s is already used by %s",
+                previous,
+                key,
+                new_unique_id,
+                taken,
+            )
+            return False
+        moves.append((item.entity_id, new_unique_id))
+
+    for entity_id, new_unique_id in moves:
+        registry.async_update_entity(entity_id, new_unique_id=new_unique_id)
+    return True
+
+
+@callback
+def _async_rekey_device(
+    hass: HomeAssistant, entry: ConfigEntry, previous: str, key: str
+) -> None:
+    """Rename the device registry row so the device page keeps its identity.
+
+    Scoped to this entry's rows. Identifiers are no longer unique across
+    config entries, so a global lookup would refuse a rename that would have
+    succeeded, and leave a second empty Atmoph device on screen for no reason.
+    """
     registry = dr.async_get(hass)
-    device = registry.async_get_device(identifiers={(DOMAIN, previous)})
+    rows = dr.async_entries_for_config_entry(registry, entry.entry_id)
+
+    device = next((row for row in rows if (DOMAIN, previous) in row.identifiers), None)
     if device is None:
         return
-    # Renaming onto an identifier another row already holds is a collision the
-    # registry refuses, and failing setup over it would be worse than leaving
-    # the stale row for Home Assistant to prune once it owns no entities.
-    if registry.async_get_device(identifiers={(DOMAIN, device_uuid)}) is not None:
+
+    existing = next((row for row in rows if (DOMAIN, key) in row.identifiers), None)
+    if existing is not None:
+        # Renaming onto an identifier this entry already holds is a collision
+        # the registry refuses. The stale row is not pruned automatically
+        # either, because it still references a live config entry, so an empty
+        # one is removed here rather than left on the device page forever.
+        if not er.async_entries_for_device(er.async_get(hass), device.id, True):
+            registry.async_remove_device(device.id)
         return
-    registry.async_update_device(device.id, new_identifiers={(DOMAIN, device_uuid)})
+
+    registry.async_update_device(device.id, new_identifiers={(DOMAIN, key)})

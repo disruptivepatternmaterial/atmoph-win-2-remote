@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from datetime import timedelta
 from typing import Any
@@ -135,8 +136,7 @@ class AtmophCoordinator(DataUpdateCoordinator[AtmophState]):
 
     # Bleak delivers notifications and the disconnect callback from whichever
     # thread its backend runs on, and Home Assistant refuses to write entity
-    # state off the event loop. Both hops therefore go through the loop, which
-    # is what `hass.add_job` does for a `@callback` target.
+    # state off the event loop. Both hops therefore go through the loop.
     def _handle_state(self, state: AtmophState) -> None:
         self.hass.loop.call_soon_threadsafe(self.async_set_updated_data, state)
 
@@ -155,5 +155,8 @@ class AtmophCoordinator(DataUpdateCoordinator[AtmophState]):
         self._bleak = None
         if client is not None:
             await client.close()
-        if bleak is not None and bleak.is_connected:
-            await bleak.disconnect()
+        # This runs while reporting an update failure, so a disconnect that
+        # itself raises must not replace the error the caller is raising.
+        with contextlib.suppress(Exception):
+            if bleak is not None and bleak.is_connected:
+                await bleak.disconnect()
