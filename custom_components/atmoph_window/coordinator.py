@@ -19,6 +19,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from .client import AtmophClient
 from .const import CONF_ADVERTISED_NAME, DEFAULT_UPDATE_INTERVAL, DOMAIN
+from .identity import async_device_key
 from .protocol import SERVICE_UUID, AtmophState
 
 _LOGGER = logging.getLogger(__name__)
@@ -43,6 +44,11 @@ class AtmophCoordinator(DataUpdateCoordinator[AtmophState]):
         self._last_address: str | None = entry.data.get("address")
         self._bleak: Any | None = None
         self._client: AtmophClient | None = None
+
+    @property
+    def device_key(self) -> str:
+        """Return the stable key entities and the device registry are built on."""
+        return async_device_key(self.config_entry)
 
     @callback
     def async_handle_advertisement(

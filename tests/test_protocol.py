@@ -101,6 +101,31 @@ def test_state_parses_identity_power_and_levels() -> None:
     assert level == Level(minimum=1, maximum=10, value=6)
 
 
+def test_an_identity_without_a_uuid_reports_none_rather_than_a_placeholder() -> None:
+    """The window that answers with an empty first field has no UUID to give.
+
+    A blank standing in for the UUID would key the whole integration on the
+    empty string, so the absence has to survive as an absence and let the
+    caller decide what to do about it.
+    """
+    state = AtmophState()
+
+    state.apply_identity(b",Living Room")
+
+    assert state.device_uuid is None
+    assert state.name == "Living Room"
+
+
+def test_an_identity_carrying_only_a_uuid_leaves_the_name_unset() -> None:
+    """The app slices the payload at index 36, so a short one has no name."""
+    state = AtmophState()
+
+    state.apply_identity(b"device-uuid")
+
+    assert state.device_uuid == "device-uuid"
+    assert state.name is None
+
+
 def test_local_write_keeps_the_reported_bounds() -> None:
     """A level is written as a bare value but must stay a bounded object."""
     state = AtmophState()

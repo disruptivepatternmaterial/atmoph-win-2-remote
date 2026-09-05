@@ -10,7 +10,12 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.atmoph_window.const import CONF_ADVERTISED_NAME, DOMAIN
+from custom_components.atmoph_window.config_flow import AtmophWindowConfigFlow
+from custom_components.atmoph_window.const import (
+    CONF_ADVERTISED_NAME,
+    CONF_DEVICE_UUID,
+    DOMAIN,
+)
 
 from .fakes import (
     ROTATED_ADDRESS,
@@ -49,8 +54,12 @@ async def test_bluetooth_discovery_confirms_and_creates_entry(
     assert result["data"] == {
         CONF_ADVERTISED_NAME: WINDOW_NAME,
         "address": WINDOW_ADDRESS,
+        CONF_DEVICE_UUID: None,
     }
+    # The advertised name is the only value an advertisement carries, so it
+    # stays the entry's own unique id even though entities key on the UUID.
     assert result["result"].unique_id == WINDOW_NAME
+    assert result["result"].version == AtmophWindowConfigFlow.VERSION
 
 
 async def test_bluetooth_discovery_rejects_an_address_shaped_name(
@@ -89,6 +98,33 @@ async def test_bluetooth_discovery_updates_the_address_of_a_known_window(
     assert config_entry.data["address"] == ROTATED_ADDRESS
 
 
+async def test_rediscovery_still_matches_a_window_keyed_on_its_device_uuid(
+    hass: HomeAssistant, config_entry: MockConfigEntry
+) -> None:
+    """Adopting the UUID must not cost the entry its discovery match.
+
+    Only the advertised name is ever on the air, so an entry whose entities
+    have moved onto the device UUID would be rediscovered as a second window
+    if the entry's own unique id had moved with them.
+    """
+    config_entry.add_to_hass(hass)
+    hass.config_entries.async_update_entry(
+        config_entry,
+        data={**config_entry.data, CONF_DEVICE_UUID: "device-uuid-from-gatt"},
+    )
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": SOURCE_BLUETOOTH},
+        data=make_service_info(address=ROTATED_ADDRESS),
+    )
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "already_configured"
+    assert config_entry.data[CONF_DEVICE_UUID] == "device-uuid-from-gatt"
+    assert config_entry.data["address"] == ROTATED_ADDRESS
+
+
 async def test_user_flow_lists_visible_windows(
     hass: HomeAssistant, fake_bluetooth: FakeBluetooth
 ) -> None:
@@ -108,6 +144,7 @@ async def test_user_flow_lists_visible_windows(
     assert result["data"] == {
         CONF_ADVERTISED_NAME: WINDOW_NAME,
         "address": WINDOW_ADDRESS,
+        CONF_DEVICE_UUID: None,
     }
 
 

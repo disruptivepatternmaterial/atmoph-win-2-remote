@@ -12,6 +12,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.atmoph_window.const import (
     CONF_ADVERTISED_NAME,
+    CONF_DEVICE_UUID,
     DOMAIN,
     SERVICE_SEND_COMMAND,
     SERVICE_SET_SETTING,
@@ -22,16 +23,16 @@ from .fakes import (
     SECOND_WINDOW_ADDRESS,
     SECOND_WINDOW_NAME,
     WINDOW_ADDRESS,
-    WINDOW_NAME,
     FakeBluetooth,
+    device_uuid_for,
     make_service_info,
 )
 
 
-def target(hass: HomeAssistant, window: str = WINDOW_NAME) -> dict[str, str]:
+def target(hass: HomeAssistant, address: str = WINDOW_ADDRESS) -> dict[str, str]:
     """Return a service target naming one window by one of its entities."""
     entity_id = er.async_get(hass).async_get_entity_id(
-        "switch", DOMAIN, f"{window}_display"
+        "switch", DOMAIN, f"{device_uuid_for(address)}_display"
     )
     assert entity_id is not None
     return {"entity_id": entity_id}
@@ -50,9 +51,11 @@ async def two_windows(
         domain=DOMAIN,
         title=SECOND_WINDOW_NAME,
         unique_id=SECOND_WINDOW_NAME,
+        version=config_entry.version,
         data={
             CONF_ADVERTISED_NAME: SECOND_WINDOW_NAME,
             "address": SECOND_WINDOW_ADDRESS,
+            CONF_DEVICE_UUID: None,
         },
     )
     config_entry.add_to_hass(hass)
@@ -158,7 +161,7 @@ async def test_send_command_only_reaches_the_targeted_window(
     await hass.services.async_call(
         DOMAIN,
         SERVICE_SEND_COMMAND,
-        {"command": "next_view"} | target(hass, SECOND_WINDOW_NAME),
+        {"command": "next_view"} | target(hass, SECOND_WINDOW_ADDRESS),
         blocking=True,
     )
 

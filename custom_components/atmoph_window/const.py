@@ -6,6 +6,7 @@ DOMAIN: Final = "atmoph_window"
 DEFAULT_UPDATE_INTERVAL: Final = 60
 
 CONF_ADVERTISED_NAME: Final = "advertised_name"
+CONF_DEVICE_UUID: Final = "device_uuid"
 
 ATTR_LOCATION: Final = "location"
 ATTR_IMAGE_URL: Final = "image_url"

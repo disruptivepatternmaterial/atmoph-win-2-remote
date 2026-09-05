@@ -19,8 +19,12 @@ import pytest  # noqa: E402
 from homeassistant.core import HomeAssistant  # noqa: E402
 from pytest_homeassistant_custom_component.common import MockConfigEntry  # noqa: E402
 
+from custom_components.atmoph_window.config_flow import (  # noqa: E402
+    AtmophWindowConfigFlow,
+)
 from custom_components.atmoph_window.const import (  # noqa: E402
     CONF_ADVERTISED_NAME,
+    CONF_DEVICE_UUID,
     DOMAIN,
 )
 
@@ -82,11 +86,28 @@ def fake_bluetooth() -> Generator[FakeBluetooth]:
 
 @pytest.fixture
 def config_entry() -> MockConfigEntry:
-    """Return a config entry for an already-configured window."""
+    """Return a freshly created entry for a window that has never connected."""
     return MockConfigEntry(
         domain=DOMAIN,
         title=WINDOW_NAME,
         unique_id=WINDOW_NAME,
+        version=AtmophWindowConfigFlow.VERSION,
+        data={
+            CONF_ADVERTISED_NAME: WINDOW_NAME,
+            "address": WINDOW_ADDRESS,
+            CONF_DEVICE_UUID: None,
+        },
+    )
+
+
+@pytest.fixture
+def legacy_config_entry() -> MockConfigEntry:
+    """Return an entry in the shape 0.2.1 wrote, keyed on the advertised name."""
+    return MockConfigEntry(
+        domain=DOMAIN,
+        title=WINDOW_NAME,
+        unique_id=WINDOW_NAME,
+        version=1,
         data={CONF_ADVERTISED_NAME: WINDOW_NAME, "address": WINDOW_ADDRESS},
     )
 

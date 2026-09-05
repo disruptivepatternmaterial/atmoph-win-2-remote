@@ -86,7 +86,7 @@ attempt.
 | Limitation | Why |
 |---|---|
 | Views can be stepped, not chosen | No characteristic selects a view. The one that looks like it does silently discards writes ([#7](https://github.com/disruptivepatternmaterial/atmoph-win-2-remote/issues/7)). The [Node-RED example](#example-node-red-control) skips unwanted views by pressing next |
-| A window seen without a name is missed | The name is only in the scan response; the stable ID needs a connection first ([#8](https://github.com/disruptivepatternmaterial/atmoph-win-2-remote/issues/8)) |
+| A window seen without a name is missed during discovery | The name is only in the scan response, and the stable device UUID needs a connection, so it cannot be a discovery key. Once set up, entities key on the UUID and are unaffected |
 | No text entry | The app encrypts typed text with a key hardcoded in the APK. Not needed for control, and not reproduced here |
 | No zoom | The pinch gesture maps poorly to a Home Assistant entity |
 | The device page shows a generic puzzle piece | Home Assistant loads icons from `brands.home-assistant.io`, never from the integration folder, so it needs an upstream submission ([#10](https://github.com/disruptivepatternmaterial/atmoph-win-2-remote/issues/10)) |

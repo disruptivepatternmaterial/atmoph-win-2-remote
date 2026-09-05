@@ -9,14 +9,21 @@ from homeassistant.components import bluetooth
 from homeassistant.components.bluetooth import BluetoothServiceInfoBleak
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
 
-from .const import CONF_ADVERTISED_NAME, DOMAIN
+from .const import CONF_ADVERTISED_NAME, CONF_DEVICE_UUID, DOMAIN
 from .protocol import SERVICE_UUID
 
 
 class AtmophWindowConfigFlow(ConfigFlow, domain=DOMAIN):
-    """Configure an Atmoph Window discovered over BLE."""
+    """Configure an Atmoph Window discovered over BLE.
 
-    VERSION = 1
+    The entry's own unique id stays the advertised name even though the device
+    UUID is the better identity, because this is the one place the UUID can
+    never be had: rediscovery has only an advertisement to match against, and
+    reading the UUID needs a connection. Entities and the device registry key
+    on the UUID instead; see `identity.py`.
+    """
+
+    VERSION = 2
 
     def __init__(self) -> None:
         self._discovery: BluetoothServiceInfoBleak | None = None
@@ -50,6 +57,7 @@ class AtmophWindowConfigFlow(ConfigFlow, domain=DOMAIN):
                 data={
                     CONF_ADVERTISED_NAME: self._discovery.name,
                     "address": self._discovery.address,
+                    CONF_DEVICE_UUID: None,
                 },
             )
         return self.async_show_form(
@@ -80,7 +88,11 @@ class AtmophWindowConfigFlow(ConfigFlow, domain=DOMAIN):
             self._abort_if_unique_id_configured()
             return self.async_create_entry(
                 title=name,
-                data={CONF_ADVERTISED_NAME: name, "address": info.address},
+                data={
+                    CONF_ADVERTISED_NAME: name,
+                    "address": info.address,
+                    CONF_DEVICE_UUID: None,
+                },
             )
 
         return self.async_show_form(

@@ -38,6 +38,7 @@ from .fakes import (
     VIEW_REVISION,
     WINDOW_NAME,
     FakeBluetooth,
+    device_uuid_for,
     make_service_info,
 )
 
@@ -47,7 +48,9 @@ INTEGRATION = pathlib.Path(__file__).parents[2] / "custom_components" / DOMAIN
 def entity_id_for(hass: HomeAssistant, platform: str, key: str) -> str:
     """Resolve an entity id from the unique id the integration assigns."""
     registry = er.async_get(hass)
-    entity_id = registry.async_get_entity_id(platform, DOMAIN, f"{WINDOW_NAME}_{key}")
+    entity_id = registry.async_get_entity_id(
+        platform, DOMAIN, f"{device_uuid_for()}_{key}"
+    )
     assert entity_id is not None, f"no {platform} entity registered for {key}"
     return entity_id
 
@@ -289,7 +292,8 @@ async def test_a_window_without_the_view_id_characteristic_still_sets_up(
     assert config_entry.runtime_data.data.view_id_supported is False
     registry = er.async_get(hass)
     assert (
-        registry.async_get_entity_id("sensor", DOMAIN, f"{WINDOW_NAME}_view_id") is None
+        registry.async_get_entity_id("sensor", DOMAIN, f"{device_uuid_for()}_view_id")
+        is None
     )
     assert (
         hass.states.get(entity_id_for(hass, "sensor", "current_view")).state == "Kyoto"

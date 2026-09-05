@@ -6,8 +6,9 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
 
-from .const import DOMAIN
+from .const import CONF_DEVICE_UUID, DOMAIN
 from .coordinator import AtmophConfigEntry, AtmophCoordinator
+from .identity import async_adopt_device_uuid
 from .protocol import SERVICE_UUID
 from .services import async_setup_services
 
@@ -28,6 +29,23 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     return True
 
 
+async def async_migrate_entry(hass: HomeAssistant, entry: AtmophConfigEntry) -> bool:
+    """Bring a config entry up to the current schema.
+
+    Version 2 records the device UUID the entry is keyed on. It cannot be
+    filled in here, because reading it needs a connection and migration runs
+    before setup, so it starts empty and `async_setup_entry` adopts the value
+    the first refresh reports.
+    """
+    if entry.version > 2:
+        return False
+    if entry.version == 1:
+        hass.config_entries.async_update_entry(
+            entry, data={**entry.data, CONF_DEVICE_UUID: None}, version=2
+        )
+    return True
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: AtmophConfigEntry) -> bool:
     """Set up an Atmoph Window from a config entry."""
     coordinator = AtmophCoordinator(hass, entry)
@@ -37,6 +55,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: AtmophConfigEntry) -> bo
     # range, so nothing may be registered before it: Home Assistant runs the
     # entry's unload callbacks itself when setup fails.
     await coordinator.async_config_entry_first_refresh()
+
+    # Before the platforms, so every entity is created with the identity it
+    # keeps rather than one rewritten underneath it.
+    await async_adopt_device_uuid(hass, entry, coordinator.data.device_uuid)
 
     entry.async_on_unload(
         bluetooth.async_register_callback(

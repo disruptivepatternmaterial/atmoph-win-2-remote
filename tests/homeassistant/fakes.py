@@ -32,6 +32,11 @@ VIEW_ID = "LAT2_IUOV6NFQ"
 VIEW_REVISION = "7206c70d"
 
 
+def device_uuid_for(address: str = WINDOW_ADDRESS) -> str:
+    """Return the device UUID the fake window at one address reports."""
+    return f"device-uuid-{address}"
+
+
 def make_service_info(
     name: str = WINDOW_NAME,
     address: str = WINDOW_ADDRESS,
@@ -63,13 +68,20 @@ class FakeBleakClient:
         address: str = WINDOW_ADDRESS,
         power: bool = True,
         view_id: bool = True,
+        device_uuid: bool = True,
     ) -> None:
         self.address = address
         self.connected = True
         self.values: dict[str, bytes] = {
             # Two configured windows have to look like two devices, and the
             # device UUID is what the integration keys the device registry on.
-            IDENTITY_UUID: f"device-uuid-{address},Living Room".encode(),
+            # A window answering with an empty first field reports no UUID at
+            # all, which the integration has to survive.
+            IDENTITY_UUID: (
+                f"{device_uuid_for(address)},Living Room".encode()
+                if device_uuid
+                else b",Living Room"
+            ),
             PANORAMA_ROLE_UUID: b"N",
             VIEW_TITLE_UUID: b"Kyoto",
             VIEW_IMAGE_UUID: b"https://example.invalid/view.jpg",
@@ -150,6 +162,7 @@ class FakeBluetooth:
         self.unregister_calls = 0
         self.connect_failure: Exception | None = None
         self.view_id_supported = True
+        self.device_uuid_reported = True
 
     @property
     def client(self) -> FakeBleakClient:
@@ -206,6 +219,10 @@ class FakeBluetooth:
         if self.connect_failure is not None:
             raise self.connect_failure
         self.clients.append(
-            FakeBleakClient(address=device.address, view_id=self.view_id_supported)
+            FakeBleakClient(
+                address=device.address,
+                view_id=self.view_id_supported,
+                device_uuid=self.device_uuid_reported,
+            )
         )
         return self.clients[-1]

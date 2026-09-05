@@ -62,10 +62,19 @@ apply, and together they rule out both obvious identifiers:
   scanner must use active scanning. (**Reported**; consistent with **App**,
   which scans actively.)
 
-The only stable identifier is the device UUID read over GATT after connecting.
-This integration currently keys its config entry on the advertised name, which
-is stable when present but missed when absent — tracked as
-[issue #8](https://github.com/disruptivepatternmaterial/atmoph-win-2-remote/issues/8).
+The only stable identifier is the device UUID read over GATT from
+`5a388825-…` after connecting. It does not rotate, but it cannot be a
+discovery key, because rediscovery has only an advertisement to match against
+and reading the UUID needs a connection.
+
+The integration therefore splits the two roles. Discovery and the config
+entry's own unique id use the advertised name, which is the only value an
+advertisement carries when it carries anything. Entities and the device
+registry key on the device UUID, adopted the first time a window reports one
+and then never replaced — a window answering with a different UUID is a
+different window, and following it would orphan the history of the one the
+entry was set up for. The switch is a registry migration, so entity ids and
+their history survive it. See `custom_components/atmoph_window/identity.py`.
 
 ## GATT map
 

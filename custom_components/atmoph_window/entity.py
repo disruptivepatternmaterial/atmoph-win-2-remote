@@ -14,19 +14,20 @@ class AtmophEntity(CoordinatorEntity[AtmophCoordinator]):
 
     def __init__(self, coordinator: AtmophCoordinator, key: str) -> None:
         super().__init__(coordinator)
-        self._attr_unique_id = f"{coordinator.advertised_name}_{key}"
+        self._attr_unique_id = f"{coordinator.device_key}_{key}"
 
     @property
     def device_info(self) -> DeviceInfo:
-        """Return the shared Home Assistant device."""
+        """Return the shared Home Assistant device.
+
+        No `connections` entry: the only address a window has is a resolvable
+        private one it rotates every few tens of seconds, so recording it would
+        leave the registry holding an address that belongs to something else
+        within the minute, and connections are matched across integrations.
+        """
         state = self.coordinator.data
-        identifier = (
-            state.device_uuid
-            if state is not None and state.device_uuid
-            else self.coordinator.advertised_name
-        )
         return DeviceInfo(
-            identifiers={(DOMAIN, identifier)},
+            identifiers={(DOMAIN, self.coordinator.device_key)},
             manufacturer="Atmoph",
             model="Window 2",
             name=(
