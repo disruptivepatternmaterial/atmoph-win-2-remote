@@ -210,7 +210,13 @@ It **does not request an MTU**. The app asks for 128 explicitly because the
 Android BLE API expects it to; a bleak client cannot portably, since BlueZ and
 CoreBluetooth negotiate on the host's behalf. Nothing may therefore assume a
 payload size: a notification can be split at any byte, including the middle of
-a character, which is why the JSON reader decodes incrementally.
+a character. Both readers therefore decode incrementally — the quick-settings
+one, and the view title and location, which are the characteristics Atmoph
+fills with Japanese. A character arriving in two halves raises on both of them
+if each packet is decoded on its own, so the incomplete tail is held until the
+rest of it turns up. A long ASCII value split in two is not recoverable and
+nothing pretends otherwise: the payload carries no length and no terminator,
+so two halves cannot be told apart from two values.
 
 It **subscribes before reading**, reversing steps 3 and 4, so a notification
 that fires while the initial reads are in flight is delivered rather than

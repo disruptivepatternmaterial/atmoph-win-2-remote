@@ -230,9 +230,17 @@ async def test_set_setting_rejects_a_value_outside_the_reported_bounds(
 
 
 async def test_set_setting_refuses_a_setting_the_window_has_not_reported(
-    hass: HomeAssistant, fake_bluetooth: FakeBluetooth, loaded_entry: MockConfigEntry
+    hass: HomeAssistant, fake_bluetooth: FakeBluetooth, config_entry: MockConfigEntry
 ) -> None:
-    """Without a report there is no way to tell a level from a boolean."""
+    """Without a report there is no way to tell a level from a boolean.
+
+    A window that answers with fewer keys than the app knows is the only way
+    to reach this: the documented settings document carries all nine.
+    """
+    fake_bluetooth.unreported_settings = frozenset({"LedBrightness"})
+    config_entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
     fake_bluetooth.client.writes.clear()
 
     with pytest.raises(ServiceValidationError) as err:

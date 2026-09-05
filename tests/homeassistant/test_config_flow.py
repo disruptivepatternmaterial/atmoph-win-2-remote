@@ -81,6 +81,39 @@ async def test_bluetooth_discovery_rejects_an_address_shaped_name(
     assert result["reason"] == "cannot_identify"
 
 
+async def test_bluetooth_discovery_ignores_a_nameless_advertisement(
+    hass: HomeAssistant,
+) -> None:
+    """The same window is seen named and nameless seconds apart.
+
+    The name rides in the scan response rather than the advertisement, so a
+    nameless packet is the ordinary case and not a fault. There is nothing in
+    it to key an entry on - the address rotates - so the flow has to wait for
+    a packet that carries one instead of configuring a window it cannot name.
+    """
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": SOURCE_BLUETOOTH},
+        data=make_service_info(name="", address=WINDOW_ADDRESS),
+    )
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "cannot_identify"
+
+
+async def test_the_confirm_step_cannot_be_reached_without_a_discovery(
+    hass: HomeAssistant,
+) -> None:
+    """A flow resumed after a restart has no discovery left to confirm."""
+    flow = AtmophWindowConfigFlow()
+    flow.hass = hass
+
+    result = await flow.async_step_confirm()
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "cannot_identify"
+
+
 async def test_bluetooth_discovery_updates_the_address_of_a_known_window(
     hass: HomeAssistant, config_entry: MockConfigEntry
 ) -> None:
@@ -146,6 +179,31 @@ async def test_user_flow_lists_visible_windows(
         "address": WINDOW_ADDRESS,
         CONF_DEVICE_UUID: None,
     }
+
+
+async def test_user_flow_survives_a_window_that_stops_advertising_mid_flow(
+    hass: HomeAssistant, fake_bluetooth: FakeBluetooth
+) -> None:
+    """The list is rebuilt on submit, and a window is free to leave in between.
+
+    Addresses rotate and advertisements expire, so the form is always
+    validated against a list that may already be stale by the time it comes
+    back. Aborting is the honest answer; the alternative is a KeyError.
+    """
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+    assert result["type"] is FlowResultType.FORM
+
+    fake_bluetooth.service_infos = [
+        make_service_info(name="Bedroom Window", address=ROTATED_ADDRESS)
+    ]
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_ADVERTISED_NAME: WINDOW_NAME}
+    )
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "no_devices_found"
 
 
 async def test_user_flow_ignores_devices_without_the_service(
