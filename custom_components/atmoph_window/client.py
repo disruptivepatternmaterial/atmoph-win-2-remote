@@ -163,7 +163,6 @@ class AtmophClient:
                 if isinstance(settings, dict):
                     self.state.apply_quick_settings(settings)
             await self._read_view_id()
-        self._publish()
         return self.state
 
     async def _read_view_id(self) -> None:
@@ -199,7 +198,6 @@ class AtmophClient:
         """
         self.state.apply_power(await self._read(POWER_UUID))
         if self.state.power == desired:
-            self._publish()
             return
 
         for attempt in range(_POWER_ATTEMPTS):
@@ -207,7 +205,6 @@ class AtmophClient:
                 await asyncio.sleep(_POWER_RETRY_DELAY)
             await self.send_command("sleep_toggle")
             if await self._await_power(desired):
-                self._publish()
                 return
 
         raise TimeoutError("Window did not confirm the requested display power state")
@@ -262,5 +259,12 @@ class AtmophClient:
         self._publish()
 
     def _publish(self) -> None:
+        """Hand unsolicited state to the owner.
+
+        Only the notification path publishes. Reads and writes are all started
+        by the coordinator, which publishes what they return, so publishing
+        from them too would deliver every poll twice and reset the refresh
+        timer behind the coordinator's back.
+        """
         if self._on_update is not None:
             self._on_update(self.state)

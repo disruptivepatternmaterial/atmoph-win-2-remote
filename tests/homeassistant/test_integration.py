@@ -10,7 +10,12 @@ import pytest
 from homeassistant.components.bluetooth import BluetoothChange
 from homeassistant.components.diagnostics import REDACTED
 from homeassistant.config_entries import ConfigEntryState
-from homeassistant.const import STATE_OFF, STATE_ON, EntityCategory
+from homeassistant.const import (
+    STATE_OFF,
+    STATE_ON,
+    STATE_UNAVAILABLE,
+    EntityCategory,
+)
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import entity_registry as er
@@ -159,6 +164,39 @@ async def test_coordinator_reconnects_at_a_rotated_address(
     assert len(fake_bluetooth.clients) == 2
     assert fake_bluetooth.client.address == ROTATED_ADDRESS
     assert fake_bluetooth.client.is_connected
+
+
+async def test_a_dropped_connection_makes_the_entities_unavailable(
+    hass: HomeAssistant, fake_bluetooth: FakeBluetooth, loaded_entry: MockConfigEntry
+) -> None:
+    """Stale state is worse than no state when the control is a toggle.
+
+    Serving the last known value until the next poll lets an automation read a
+    display as on after it went off, and the only way to set power is to
+    toggle - so acting on that reading inverts the command it sends.
+    """
+    display = entity_id_for(hass, "switch", "display")
+    assert hass.states.get(display).state == STATE_ON
+
+    await fake_bluetooth.client.disconnect()
+    await hass.async_block_till_done()
+
+    assert hass.states.get(display).state == STATE_UNAVAILABLE
+    assert loaded_entry.runtime_data.last_update_success is False
+
+
+async def test_a_deliberate_disconnect_on_unload_reports_no_error(
+    hass: HomeAssistant, fake_bluetooth: FakeBluetooth, loaded_entry: MockConfigEntry
+) -> None:
+    """Unloading drops the connection on purpose, which is not a failure."""
+    # Home Assistant clears runtime_data on unload, so hold the coordinator.
+    coordinator = loaded_entry.runtime_data
+
+    assert await hass.config_entries.async_unload(loaded_entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert loaded_entry.state is ConfigEntryState.NOT_LOADED
+    assert coordinator.last_update_success is True
 
 
 async def test_advertisements_from_other_devices_are_ignored(

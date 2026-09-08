@@ -162,6 +162,14 @@ class AtmophCoordinator(DataUpdateCoordinator[AtmophState]):
     def _mark_disconnected(self) -> None:
         self._bleak = None
         self._client = None
+        # Entities would otherwise keep serving the last state they were told,
+        # for up to a whole update interval. The display is a toggle, so an
+        # automation reading a stale value does not merely display something
+        # wrong - it inverts the command it then sends. Better unavailable.
+        if not self._shutdown_requested:
+            self.async_set_update_error(
+                UpdateFailed(f"{self.advertised_name} disconnected")
+            )
 
     async def _async_disconnect(self) -> None:
         client, bleak = self._client, self._bleak

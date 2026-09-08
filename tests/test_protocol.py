@@ -343,7 +343,29 @@ async def test_initialize_reads_state_and_requests_notifications() -> None:
     assert state.quick_settings["WidgetsVisible"] is True
     assert POWER_UUID in peripheral.notifications
     assert (COMMAND_UUID, b"C", True) in peripheral.writes
-    assert updates
+
+
+@pytest.mark.asyncio
+async def test_only_notifications_are_pushed_to_the_owner() -> None:
+    """Reads and writes return their result; the callback is for surprises.
+
+    Everything except a notification is started by the coordinator, which
+    publishes what the call returns. Publishing from the call as well delivers
+    every poll twice and resets the refresh timer behind the coordinator's
+    back, so the callback has to stay reserved for unsolicited state.
+    """
+    peripheral = FakeBleakClient()
+    updates: list[AtmophState] = []
+    client = AtmophClient(peripheral, updates.append)
+
+    await client.initialize()
+    await client.refresh()
+    await client.set_power(False)
+    await client.set_setting("WidgetsVisible", False)
+    assert updates == []
+
+    peripheral.notify(VIEW_TITLE_UUID, b"Osaka")
+    assert [state.view_title for state in updates] == ["Osaka"]
 
 
 @pytest.mark.asyncio
