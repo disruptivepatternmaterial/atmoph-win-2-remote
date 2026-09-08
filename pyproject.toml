@@ -58,8 +58,9 @@ packages = []
 asyncio_mode = "auto"
 testpaths = ["tests"]
 # Import the integration from the checkout so the protocol tests run without
-# installing the package.
-pythonpath = ["."]
+# installing the package. `tools` is on the path for tests/tools/, because the
+# diagnostics are scripts run by their path rather than an installed package.
+pythonpath = [".", "tools"]
 # tests/homeassistant/ needs the real package and Home Assistant imported;
 # tests/test_protocol.py asserts the opposite. Keeping the directory out of
 # recursive discovery leaves `pytest` as the fast, Home Assistant free suite
@@ -70,6 +71,9 @@ norecursedirs = ["homeassistant", "*.egg", ".*", "build", "dist", "node_modules"
 [tool.ruff]
 target-version = "py313"
 line-length = 88
+# Mirrors pythonpath: without it the diagnostics import as third-party and
+# isort splits the imports in tests/tools/ into a group of their own.
+src = [".", "tools"]
 
 [tool.ruff.lint]
 select = ["B", "E", "F", "I", "UP"]

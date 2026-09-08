@@ -18,7 +18,7 @@ client characteristic configuration descriptor, but that is transport state and
 changes nothing on the device.
 
 Parsing and report formatting are verified offline against a fake peripheral by
-tools/selftest.py.
+tests/tools/test_diag.py.
 """
 
 from __future__ import annotations

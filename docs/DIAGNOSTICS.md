@@ -356,11 +356,12 @@ hardware addresses, and serial numbers out of issue text.
 
 ## Verification status of the tools themselves
 
-`tools/selftest.py` verifies both tools offline, against a fake window and a
-fake adbd rather than against hardware:
+`tests/tools/` verifies both tools offline, against a fake window and a fake
+adbd rather than against hardware. It is part of the fast suite, so CI runs it
+on every push and pull request:
 
 ```sh
-uv run --no-project --with bleak -- python tools/selftest.py
+pytest -q tests/tools
 ```
 
 It covers value rendering, the quick-settings description, all six LED

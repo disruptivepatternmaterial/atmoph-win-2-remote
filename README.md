@@ -217,7 +217,9 @@ automatically after changes merge to `main`. Edit the sources, never the wiki.
 ## Development
 
 The protocol suite runs without Home Assistant at all, which is what keeps
-`protocol.py` and `client.py` reusable outside it:
+`protocol.py` and `client.py` reusable outside it. It also covers the
+diagnostics in `tools/`, which import nothing beyond the standard library and
+`protocol.py`:
 
 ```sh
 python3 -m venv .venv
