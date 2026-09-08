@@ -255,6 +255,34 @@ async def test_set_setting_refuses_a_setting_the_window_has_not_reported(
     assert fake_bluetooth.client.settings_writes == []
 
 
+async def test_set_setting_re_reads_before_refusing_a_missing_setting(
+    hass: HomeAssistant, fake_bluetooth: FakeBluetooth, loaded_entry: MockConfigEntry
+) -> None:
+    """A key absent from cached state is not proof the window lacks it.
+
+    The settings document arrives whole, so a key missing from it is either
+    firmware that does not implement it or a notification that went astray.
+    Only the second is recoverable, and re-reading the characteristic is what
+    tells them apart - which matters because the alternative is refusing a
+    write the window would have accepted.
+    """
+    coordinator = loaded_entry.runtime_data
+    # Exactly what a lost settings notification leaves behind: the device
+    # still reports the key, this end has forgotten it.
+    del coordinator.data.quick_settings["LedBrightness"]
+    fake_bluetooth.client.writes.clear()
+
+    await hass.services.async_call(
+        DOMAIN,
+        SERVICE_SET_SETTING,
+        {"setting": "LedBrightness", "value": 4} | target(hass),
+        blocking=True,
+    )
+
+    assert fake_bluetooth.client.settings_writes == [b'{"LedBrightness":4}']
+    assert coordinator.data.quick_settings["LedBrightness"] is not None
+
+
 async def test_set_setting_rejects_an_unknown_key(
     hass: HomeAssistant, fake_bluetooth: FakeBluetooth, loaded_entry: MockConfigEntry
 ) -> None:

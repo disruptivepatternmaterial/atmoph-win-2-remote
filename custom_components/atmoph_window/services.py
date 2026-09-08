@@ -92,20 +92,20 @@ async def _async_set_setting(call: ServiceCall) -> None:
             },
         )
     for coordinator in await _async_targeted_coordinators(call):
-        value = _validated_value(coordinator, setting, call.data[ATTR_VALUE])
+        reported = await coordinator.async_reported_setting(setting)
+        value = _validated_value(reported, call.data[ATTR_VALUE])
         await coordinator.async_set_setting(setting, value)
 
 
-def _validated_value(
-    coordinator: AtmophCoordinator, setting: str, value: bool | int
-) -> bool | int:
+def _validated_value(reported: object | None, value: bool | int) -> bool | int:
     """Match a submitted value to the type and bounds the window reports.
 
     The write format is a bare value, so nothing in it distinguishes a boolean
     setting from a level. The window's own report of the setting decides, and a
-    setting it has never reported is refused rather than guessed at.
+    setting it has never reported is refused rather than guessed at: writing
+    the wrong type to a device whose declared properties are already known to
+    lie is worse than declining.
     """
-    reported = coordinator.data.quick_settings.get(setting)
     if isinstance(reported, bool):
         return bool(value)
 

@@ -90,6 +90,25 @@ class AtmophCoordinator(DataUpdateCoordinator[AtmophState]):
         await client.set_power(desired)
         self.async_set_updated_data(client.state)
 
+    async def async_reported_setting(self, key: str) -> object | None:
+        """Return the window's own report of one quick setting.
+
+        The window announces the whole settings object on connect, so a key
+        missing from it is either firmware that does not implement it or a
+        notification that went astray. Re-reading the characteristic separates
+        the two, which matters because the write format carries no type: the
+        report is the only thing that says whether a key takes a boolean or a
+        bounded integer.
+        """
+        reported = self.data.quick_settings.get(key)
+        if reported is not None:
+            return reported
+
+        client = await self._async_ensure_client()
+        state = await client.refresh()
+        self.async_set_updated_data(state)
+        return state.quick_settings.get(key)
+
     async def async_set_setting(self, key: str, value: bool | int | str) -> None:
         """Write a quick setting."""
         client = await self._async_ensure_client()
