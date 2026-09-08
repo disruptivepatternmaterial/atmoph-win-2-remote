@@ -67,10 +67,18 @@ _register_namespace(
 
 from custom_components.atmoph_window.protocol import (  # noqa: E402
     COMMAND_UUID,
+    FOCUSING_VIEW_UUID,
     IDENTITY_UUID,
+    PANORAMA_ROLE_UUID,
+    POWER_UUID,
     QUICK_SETTINGS_UUID,
     SERVICE_UUID,
     SETTING_KEYS,
+    TEXT_INPUT_UUID,
+    VIEW_ID_UUID,
+    VIEW_IMAGE_UUID,
+    VIEW_LOCATION_UUID,
+    VIEW_TITLE_UUID,
     JsonObjectStream,
     Level,
     decode_text,
@@ -99,18 +107,21 @@ MASK = "<masked>"
 # Labels recovered from docs/PROTOCOL.md. "app" marks a characteristic the
 # Android app actually binds; "declared" marks one it names and never touches;
 # "hardware" marks one reported on a window and absent from the app entirely.
+# Deliberately a superset of the protocol layer's constants: every UUID
+# protocol.py exports has to appear here, and the hardware-only ones have no
+# constant to name them. tests/tools/test_diag.py asserts that direction.
 KNOWN_CHARACTERISTICS: dict[str, str] = {
     IDENTITY_UUID: "app: device UUID and name",
-    "ec812b51-ae67-4cf3-8272-3967b3fc22a0": "app: panorama role",
-    "1d862803-b301-4548-bece-1f1ab61881b8": "app: current view title",
-    "99cd2547-0640-485c-9996-e0a2b384a6f2": "app: current view image URL",
-    "275ddae2-4c69-4638-97d4-d5ba8e9e05d1": "app: current view location",
-    "3afad096-8cb5-4cb7-a8b4-c7dca3e41b94": "app: focused UI element JSON",
+    PANORAMA_ROLE_UUID: "app: panorama role",
+    VIEW_TITLE_UUID: "app: current view title",
+    VIEW_IMAGE_UUID: "app: current view image URL",
+    VIEW_LOCATION_UUID: "app: current view location",
+    FOCUSING_VIEW_UUID: "app: focused UI element JSON",
     COMMAND_UUID: "app: remote control commands",
-    "73de7799-b573-46f3-99fd-c6a7a8fc2fde": "app: text input JSON",
+    TEXT_INPUT_UUID: "app: text input JSON",
     QUICK_SETTINGS_UUID: "app: quick settings JSON",
-    "7607f5a4-22bc-4730-9019-c78dc8b50341": "app: display power",
-    "03cffbfe-b23a-4c8f-bf57-9591b4d59119": "declared: view id and revision",
+    POWER_UUID: "app: display power",
+    VIEW_ID_UUID: "declared: view id and revision",
     "e6f3269f-a0ce-49fa-9c46-8edbc02e0711": "declared: device UUID alone",
     "2e109d28-1008-4cb6-a7af-1fabb2fa3278": "declared: device name alone",
     "d78f7085-8a3e-487e-8691-9b672aeea0eb": "declared: write-only, unknown",
