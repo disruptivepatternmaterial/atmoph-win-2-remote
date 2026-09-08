@@ -26,6 +26,24 @@ Nothing in this document has been confirmed against an Atmoph Window 2 by this
 project. The tools' own logic has been; see
 [Verification status](#verification-status-of-the-tools-themselves).
 
+## Start with the diagnostics download
+
+If the integration is running, the cheapest useful artifact needs no terminal
+at all: **Settings → Devices & services → Atmoph Window → Download
+diagnostics**. The report carries the window's live GATT table, every service
+and characteristic with its declared properties, alongside the last state the
+integration read.
+
+That is enough on its own to answer which characteristics a particular unit
+exposes — including whether it has the second service `401f7f45-…`, which has
+only ever been observed on other hardware. It is safe to attach to a public
+issue: identifying fields are redacted, and a GATT table describes a model of
+window rather than anyone's particular one.
+
+Reach for the tools below when the download is not enough: to read every
+characteristic's *value*, to get the quick-settings verdict, or to compare two
+units side by side.
+
 ## Before you start
 
 - **Close the Atmoph phone app.** It holds the BLE connection, and a second

@@ -26,10 +26,19 @@ One device per window, with:
 
 | Platform | Entities |
 |---|---|
+| Media player | The current view as cover art, title and location, with transport and volume |
 | Switch | Display power, widgets visible, daily routine, sound only |
 | Number | Screen brightness, LED brightness, landscape volume, soundscape volume |
 | Button | Next and previous view, menu, quick menu, views, back, tap, and a four-way d-pad |
-| Sensor | Current view title, with location, thumbnail URL, and panorama role as attributes |
+| Sensor | Current view title, with location, thumbnail URL and panorama role as attributes, plus the view ID as a diagnostic |
+
+The **media player** gets you the built-in Media Control card — artwork,
+title, transport, volume — and voice-assistant support, with no custom
+frontend. It presents the same state the other entities do, so nothing you
+already built stops working. It does not advertise play or pause, because the
+protocol has no such command and a button that silently does nothing cannot be
+told from a fault. Home Assistant hides media attributes while a player is
+`off`, so the card looks empty until the window is awake.
 
 Display power is idempotent. The protocol only offers a *toggle*, so
 `switch.turn_off` reads the current state first, sends the toggle only if it
@@ -37,7 +46,22 @@ needs to, then confirms — meaning you can safely call it from an automation
 that fires repeatedly.
 
 Brightness and volume ranges are read from the window rather than assumed. The
-bounds are per-device and wider than you would guess.
+bounds are per-device and wider than you would guess, so volume is scaled from
+the window's own reported range rather than treated as a percentage.
+
+If the Bluetooth link drops, entities go **unavailable** rather than serving
+the last value they were told. With a toggle-only display, an automation
+acting on a stale reading inverts the command it sends.
+
+### Services
+
+| Service | For |
+|---|---|
+| `atmoph_window.send_command` | Any of the 15 control tokens, including `double_tap` and `search`, which have no entity |
+| `atmoph_window.set_setting` | Any of the nine quick settings, including the two with no entity |
+
+Both validate against the recovered protocol rather than the service schema, so
+a typo in YAML cannot reach the window.
 
 ## Status
 
@@ -85,7 +109,7 @@ attempt.
 
 | Limitation | Why |
 |---|---|
-| Views can be stepped, not chosen | No characteristic selects a view. The one that looks like it does silently discards writes ([#7](https://github.com/disruptivepatternmaterial/atmoph-win-2-remote/issues/7)). The [Node-RED example](#example-node-red-control) skips unwanted views by pressing next |
+| Views can be stepped, not chosen | No characteristic selects a view, and none of the 15 control tokens does either. The one that looks like it should silently discards writes, so this is a protocol limit rather than a missing feature ([#7](https://github.com/disruptivepatternmaterial/atmoph-win-2-remote/issues/7)). The [Node-RED example](#example-node-red-control) skips unwanted views by pressing next |
 | A window seen without a name is missed during discovery | The name is only in the scan response, and the stable device UUID needs a connection, so it cannot be a discovery key. Once set up, entities key on the UUID and are unaffected |
 | No text entry | The app encrypts typed text with a key hardcoded in the APK. Not needed for control, and not reproduced here |
 | No zoom | The pinch gesture maps poorly to a Home Assistant entity |
@@ -156,6 +180,16 @@ class-by-class walkthrough are in
 [docs/ANDROID-APP-ANALYSIS.md](docs/ANDROID-APP-ANALYSIS.md).
 
 ## Diagnosing a misbehaving window
+
+Start with **Settings → Devices & services → Atmoph Window → Download
+diagnostics**. The report carries the window's live GATT table — every service
+and characteristic with its declared properties — which is the one thing about
+a window that nobody without one can obtain, and the answer to most questions
+about what a particular unit exposes. Identifying fields are redacted and a
+GATT table describes a model rather than a unit, so it is safe to attach to an
+issue.
+
+For anything more than that, or to compare two units:
 
 `tools/atmoph_diag.py` dumps a window's entire GATT table — both services,
 every declared property, every readable value — and turns the quick-settings
