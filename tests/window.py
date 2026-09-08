@@ -35,6 +35,53 @@ REPORTED_SETTINGS: dict[str, object] = {
 TOGGLE_DROP_WINDOW = 1.0
 
 
+@dataclass(frozen=True, slots=True)
+class GattCharacteristic:
+    """One row of a GATT table, shaped the way bleak exposes it."""
+
+    uuid: str
+    properties: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class GattService:
+    """A primary service and the characteristics beneath it."""
+
+    uuid: str
+    characteristics: tuple[GattCharacteristic, ...]
+
+
+# Deliberately unsorted, and the second service deliberately first, so a
+# reader that reports discovery order rather than a stable order fails.
+GATT_SERVICES: tuple[GattService, ...] = (
+    GattService(
+        "401f7f45-2258-4f9b-8204-f8b301b4dcc5",
+        (
+            GattCharacteristic(
+                "596f4372-1456-4038-8bca-19ef89e6fe3e", ("read", "write")
+            ),
+            GattCharacteristic(
+                "e9c45eb5-fa81-4760-9b1b-24d6cb1d562c",
+                ("notify", "read", "write"),
+            ),
+        ),
+    ),
+    GattService(
+        "c1e0d952-12f7-4c84-b67d-fc26f55243a0",
+        (
+            GattCharacteristic("d4393824-471f-4799-ab74-28879878a4e7", ("write",)),
+            GattCharacteristic("5a388825-de5b-45bf-8864-16be820fc169", ("read",)),
+            # Declares write and discards it, which is the whole reason a
+            # report has to carry declared properties rather than trust them.
+            GattCharacteristic(
+                "7607f5a4-22bc-4730-9019-c78dc8b50341",
+                ("notify", "read", "write"),
+            ),
+        ),
+    ),
+)
+
+
 class FakeCharacteristic:
     """The object bleak hands to a notification callback.
 

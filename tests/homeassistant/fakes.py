@@ -25,6 +25,7 @@ from custom_components.atmoph_window.protocol import (
     VIEW_TITLE_UUID,
 )
 from tests.window import (
+    GATT_SERVICES,
     REPORTED_SETTINGS,
     DisplayPower,
     FakeCharacteristic,
@@ -100,6 +101,7 @@ class FakeBleakClient:
         self.address = address
         self.name = name
         self.connected = True
+        self.services = GATT_SERVICES
         self.settings: dict[str, Any] = {
             key: value
             for key, value in REPORTED_SETTINGS.items()

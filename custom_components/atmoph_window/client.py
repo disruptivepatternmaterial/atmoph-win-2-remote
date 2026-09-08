@@ -142,6 +142,39 @@ class AtmophClient:
         """Attach the state callback once the peripheral's identity is known."""
         self._on_update = on_update
 
+    def describe_gatt(self) -> list[dict[str, Any]]:
+        """Describe the peripheral's GATT table.
+
+        Structure only: service and characteristic UUIDs with their declared
+        properties, never a value. What a window exposes is the open question
+        behind the characteristics the app declares and never binds, and the
+        answer is only obtainable from someone who owns one - so it belongs in
+        the diagnostics they can hand over. It describes a model rather than a
+        unit, which is why none of it needs redacting.
+        """
+        services = getattr(self._client, "services", None)
+        if services is None:
+            return []
+
+        table: list[dict[str, Any]] = []
+        for service in services:
+            characteristics = [
+                {
+                    "uuid": str(char.uuid).lower(),
+                    "properties": sorted(char.properties),
+                }
+                for char in service.characteristics
+            ]
+            characteristics.sort(key=lambda entry: entry["uuid"])
+            table.append(
+                {
+                    "service": str(service.uuid).lower(),
+                    "characteristics": characteristics,
+                }
+            )
+        table.sort(key=lambda entry: entry["service"])
+        return table
+
     async def close(self) -> None:
         """Stop notifications before the owning coordinator disconnects."""
         for uuid in self._NOTIFY_UUIDS + self._OPTIONAL_NOTIFY_UUIDS:

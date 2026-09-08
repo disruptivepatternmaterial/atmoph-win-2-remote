@@ -799,6 +799,45 @@ async def test_diagnostics_redact_stable_identifiers(
     assert diagnostics["state"]["view_title"] == "Kyoto"
 
 
+async def test_diagnostics_carry_the_live_gatt_table(
+    hass: HomeAssistant, fake_bluetooth: FakeBluetooth, loaded_entry: MockConfigEntry
+) -> None:
+    """The table is the one thing only a window owner can supply.
+
+    Which characteristics a Window 2 really exposes is still open, because the
+    app declares several it never binds and the second service has only ever
+    been seen on other hardware. A report that carries the table answers that
+    from anyone who owns one, and it survives redaction because service and
+    characteristic UUIDs describe a model rather than a unit.
+    """
+    diagnostics = await async_get_config_entry_diagnostics(hass, loaded_entry)
+
+    assert [service["service"] for service in diagnostics["gatt"]] == [
+        "401f7f45-2258-4f9b-8204-f8b301b4dcc5",
+        "c1e0d952-12f7-4c84-b67d-fc26f55243a0",
+    ]
+    power = next(
+        char
+        for service in diagnostics["gatt"]
+        for char in service["characteristics"]
+        if char["uuid"] == POWER_UUID
+    )
+    assert power["properties"] == ["notify", "read", "write"]
+
+
+async def test_diagnostics_omit_the_gatt_table_while_disconnected(
+    hass: HomeAssistant, fake_bluetooth: FakeBluetooth, loaded_entry: MockConfigEntry
+) -> None:
+    """Reporting a remembered table as live would be worse than reporting none."""
+    await fake_bluetooth.client.disconnect()
+    await hass.async_block_till_done()
+
+    diagnostics = await async_get_config_entry_diagnostics(hass, loaded_entry)
+
+    assert diagnostics["gatt"] == []
+    assert diagnostics["last_update_success"] is False
+
+
 async def test_every_registered_entity_has_a_translated_name(
     hass: HomeAssistant, loaded_entry: MockConfigEntry
 ) -> None:

@@ -16,10 +16,17 @@ _REDACT_STATE = {"device_uuid", "name", "view_image_url"}
 async def async_get_config_entry_diagnostics(
     hass: HomeAssistant, entry: AtmophConfigEntry
 ) -> dict[str, Any]:
-    """Return diagnostics without stable device identifiers."""
+    """Return diagnostics without stable device identifiers.
+
+    The GATT table is included unredacted, and deliberately: it is service and
+    characteristic UUIDs with their properties, which describe a model of
+    window rather than anyone's particular one. It is also the one thing a
+    report can carry that nobody without the hardware can obtain.
+    """
     coordinator = entry.runtime_data
     return {
         "entry": async_redact_data(dict(entry.data), _REDACT_ENTRY),
         "last_update_success": coordinator.last_update_success,
         "state": async_redact_data(asdict(coordinator.data), _REDACT_STATE),
+        "gatt": coordinator.async_describe_gatt(),
     }

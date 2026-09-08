@@ -31,6 +31,7 @@ from custom_components.atmoph_window.protocol import (
     encode_setting,
 )
 from tests.window import (
+    GATT_SERVICES,
     REPORTED_SETTINGS,
     TOGGLE_DROP_WINDOW,
     DisplayPower,
@@ -276,6 +277,7 @@ class FakeBleakClient:
         clock: FakeClock | None = None,
         last_toggle_at: float | None = None,
     ) -> None:
+        self.services = GATT_SERVICES
         self.values: dict[str, bytes] = {
             IDENTITY_UUID: b"device-uuid,Living Room",
             PANORAMA_ROLE_UUID: b"N",
@@ -343,6 +345,38 @@ async def test_initialize_reads_state_and_requests_notifications() -> None:
     assert state.quick_settings["WidgetsVisible"] is True
     assert POWER_UUID in peripheral.notifications
     assert (COMMAND_UUID, b"C", True) in peripheral.writes
+
+
+@pytest.mark.asyncio
+async def test_the_gatt_table_is_described_in_a_stable_order() -> None:
+    """A report has to be diffable between two windows, so order is fixed.
+
+    Discovery order is whatever the stack hands back, which would make two
+    dumps of the same window differ. Properties are reported as declared,
+    including on the characteristics known to advertise write and discard it,
+    because a report that silently corrected them would hide the finding.
+    """
+    client = AtmophClient(FakeBleakClient())
+
+    table = client.describe_gatt()
+
+    assert [service["service"] for service in table] == [
+        "401f7f45-2258-4f9b-8204-f8b301b4dcc5",
+        "c1e0d952-12f7-4c84-b67d-fc26f55243a0",
+    ]
+    main = table[1]["characteristics"]
+    assert [char["uuid"] for char in main] == sorted(char["uuid"] for char in main)
+    power = next(char for char in main if char["uuid"] == POWER_UUID)
+    assert power["properties"] == ["notify", "read", "write"]
+
+
+@pytest.mark.asyncio
+async def test_a_peripheral_without_a_service_table_describes_nothing() -> None:
+    """A transport that exposes no services must not break a diagnostics dump."""
+    peripheral = FakeBleakClient()
+    del peripheral.services
+
+    assert AtmophClient(peripheral).describe_gatt() == []
 
 
 @pytest.mark.asyncio

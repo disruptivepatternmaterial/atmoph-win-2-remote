@@ -90,6 +90,13 @@ class AtmophCoordinator(DataUpdateCoordinator[AtmophState]):
         await client.set_power(desired)
         self.async_set_updated_data(client.state)
 
+    @callback
+    def async_describe_gatt(self) -> list[dict[str, Any]]:
+        """Describe the connected window's GATT table, or nothing if down."""
+        if self._client is None or not self._client.is_connected:
+            return []
+        return self._client.describe_gatt()
+
     async def async_reported_setting(self, key: str) -> object | None:
         """Return the window's own report of one quick setting.
 
