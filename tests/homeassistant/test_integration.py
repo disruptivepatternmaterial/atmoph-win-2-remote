@@ -26,6 +26,7 @@ from pytest_homeassistant_custom_component.common import (
     async_fire_time_changed,
 )
 
+from custom_components.atmoph_window.button import BUTTONS
 from custom_components.atmoph_window.config_flow import AtmophWindowConfigFlow
 from custom_components.atmoph_window.const import (
     CONF_ADVERTISED_NAME,
@@ -797,6 +798,19 @@ async def test_diagnostics_redact_stable_identifiers(
     # The view itself is not an identifier, and diagnostics with no state in
     # them are not worth collecting.
     assert diagnostics["state"]["view_title"] == "Kyoto"
+
+
+def test_every_button_maps_to_a_command_the_protocol_knows() -> None:
+    """A button passes its own key to the encoder, which raises on a stranger.
+
+    That reuse is why there is no per-button mapping to keep in step, but it
+    also means a mistyped key survives until someone presses the button. Only
+    one of the eleven is exercised by a press, so the other ten would fail in
+    front of a user rather than here.
+    """
+    keys = {description.key for description in BUTTONS}
+
+    assert keys <= set(COMMANDS), keys - set(COMMANDS)
 
 
 async def test_diagnostics_carry_the_live_gatt_table(

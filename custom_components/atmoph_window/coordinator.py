@@ -192,6 +192,9 @@ class AtmophCoordinator(DataUpdateCoordinator[AtmophState]):
         # for up to a whole update interval. The display is a toggle, so an
         # automation reading a stale value does not merely display something
         # wrong - it inverts the command it then sends. Better unavailable.
+        # `_shutdown_requested` is private to DataUpdateCoordinator and has no
+        # public equivalent, so this is the line to look at first if a Home
+        # Assistant upgrade starts reporting an error on every clean unload.
         if not self._shutdown_requested:
             self.async_set_update_error(
                 UpdateFailed(f"{self.advertised_name} disconnected")
