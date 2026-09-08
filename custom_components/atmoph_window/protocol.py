@@ -82,6 +82,38 @@ class Level:
         except (KeyError, TypeError, ValueError):
             return None
 
+    @property
+    def fraction(self) -> float:
+        """Return the position in the reported range, from zero to one.
+
+        Home Assistant models volume as a fraction while the window reports a
+        bounded integer whose range is per-device and never 0-100, so treating
+        the raw value as a percentage is wrong at both ends.
+        """
+        span = self.maximum - self.minimum
+        if span <= 0:
+            return 0.0
+        return (self.value - self.minimum) / span
+
+    def at_fraction(self, fraction: float) -> int:
+        """Return the device value nearest a position in the reported range.
+
+        Clamped rather than rejected: the caller is a slider, and the ends of
+        one must reach the ends of the range exactly or the loudest and
+        quietest settings become unreachable.
+        """
+        span = self.maximum - self.minimum
+        clamped = min(1.0, max(0.0, fraction))
+        return self.minimum + round(clamped * span)
+
+    def stepped(self, steps: int) -> int:
+        """Return the value moved by whole device steps, staying in range.
+
+        A step is one unit the window recognises rather than a tenth of the
+        range, because the range can be as coarse as six values.
+        """
+        return min(self.maximum, max(self.minimum, self.value + steps))
+
 
 @dataclass(slots=True)
 class AtmophState:

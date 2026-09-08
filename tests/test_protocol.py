@@ -347,6 +347,41 @@ async def test_initialize_reads_state_and_requests_notifications() -> None:
     assert (COMMAND_UUID, b"C", True) in peripheral.writes
 
 
+def test_a_level_converts_to_and_from_a_fraction_at_both_ends() -> None:
+    """Home Assistant wants a fraction; the window reports a bounded integer.
+
+    The reported range is per-device and never 0-100, so treating the value as
+    a percentage is wrong at both ends. Reaching the ends exactly is the part
+    that matters: a slider that cannot select the loudest or the quietest
+    setting is a slider that cannot turn the sound off.
+    """
+    level = Level(minimum=0, maximum=24, value=12)
+
+    assert level.fraction == 0.5
+    assert level.at_fraction(0.0) == 0
+    assert level.at_fraction(1.0) == 24
+    assert Level(minimum=0, maximum=24, value=24).fraction == 1.0
+    assert Level(minimum=1, maximum=25, value=1).fraction == 0.0
+
+    # A slider hands over whatever it likes; the ends still have to hold.
+    assert level.at_fraction(-0.5) == 0
+    assert level.at_fraction(1.5) == 24
+
+
+def test_a_level_with_no_range_reports_zero_rather_than_dividing_by_it() -> None:
+    """A window may report a setting it cannot vary."""
+    assert Level(minimum=3, maximum=3, value=3).fraction == 0.0
+    assert Level(minimum=3, maximum=3, value=3).at_fraction(1.0) == 3
+
+
+def test_a_level_steps_by_device_units_and_stops_at_the_bounds() -> None:
+    """A tenth of a six-value range is not a step the window recognises."""
+    assert Level(minimum=0, maximum=5, value=2).stepped(1) == 3
+    assert Level(minimum=0, maximum=5, value=2).stepped(-1) == 1
+    assert Level(minimum=0, maximum=5, value=5).stepped(1) == 5
+    assert Level(minimum=0, maximum=5, value=0).stepped(-1) == 0
+
+
 @pytest.mark.asyncio
 async def test_the_gatt_table_is_described_in_a_stable_order() -> None:
     """A report has to be diffable between two windows, so order is fixed.

@@ -851,15 +851,29 @@ async def test_every_registered_entity_has_a_translated_name(
     declared = {
         (platform, key) for platform, keys in strings["entity"].items() for key in keys
     }
+    # One entity per device may take the device's own name instead of a
+    # translated one, which is how Home Assistant models the thing a device
+    # primarily is. Listed rather than inferred: without a fixed expectation, a
+    # second entity losing its name would read as another instance of the
+    # pattern instead of the defect it is.
+    device_named = {"media_player"}
     registered = set()
     for entry in entries:
-        assert entry.translation_key, f"{entry.entity_id} has no translation key"
-        assert strings["entity"][entry.domain][entry.translation_key]["name"]
         # Icons live in `icons.json` now, so nothing may carry an inline one.
         assert entry.original_icon is None
+        if entry.domain in device_named:
+            assert entry.translation_key is None, (
+                f"{entry.entity_id} is device-named, so it must not also "
+                "carry a translation key"
+            )
+            assert entry.original_name is None
+            continue
+        assert entry.translation_key, f"{entry.entity_id} has no translation key"
+        assert strings["entity"][entry.domain][entry.translation_key]["name"]
         registered.add((entry.domain, entry.translation_key))
 
     assert declared == registered
+    assert device_named <= {entry.domain for entry in entries}
 
 
 def test_english_translations_match_the_source_strings() -> None:
