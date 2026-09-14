@@ -51,7 +51,19 @@ the window's own reported range rather than treated as a percentage.
 
 If the Bluetooth link drops, entities go **unavailable** rather than serving
 the last value they were told. With a toggle-only display, an automation
-acting on a stale reading inverts the command it sends.
+acting on a stale reading inverts the command it sends — so display power
+reports **unknown** rather than a remembered value whenever the window's
+answer cannot be read.
+
+A window that answers one characteristic with something unexpected costs that
+one field, not every entity. Only a read that outright fails is treated as the
+link being gone.
+
+When something does go wrong, the message says what you can do about it —
+whether the display is likely asleep, out of range, or held by the phone app —
+rather than surfacing a stack trace. An entity whose setting the window is not
+reporting withdraws the control instead of accepting a command and quietly
+doing nothing.
 
 ### Services
 
@@ -71,6 +83,18 @@ validation is open in
 [issue #5](https://github.com/disruptivepatternmaterial/atmoph-win-2-remote/issues/5),
 and `docs/PROTOCOL.md` labels every claim by how strong the evidence for it
 actually is. Treat anything not marked hardware-verified as a good hypothesis.
+
+That distinction is not a formality. Every test here runs against a fake
+peripheral, and the defects worth finding have consistently been the ones
+where that fake and a real window disagreed — a display that confirms slowly,
+a read that arrives truncated, a disconnect notice attributed to the wrong
+connection. Each of those was invisible until the fake was taught to do it.
+The fake models what this project understands about the hardware, so it cannot
+show what the project has misunderstood.
+
+If you own a window, **Settings → Devices & services → Atmoph Window →
+Download diagnostics** produces the one artifact that closes that gap. It
+carries the live GATT table and is safe to attach to an issue.
 
 ## Install
 

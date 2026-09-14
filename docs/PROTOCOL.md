@@ -76,6 +76,15 @@ different window, and following it would orphan the history of the one the
 entry was set up for. The switch is a registry migration, so entity ids and
 their history survive it. See `custom_components/atmoph_window/identity.py`.
 
+A window that reports **no** UUID is treated differently from one that
+reports the wrong one. A mismatch is refused before anything is written,
+because a different window answering the same name is exactly what the check
+exists to catch. An absent UUID is allowed through with a warning, because
+refusing it would be permanent — the stored identity never changes, so a
+window that stopped reporting one would fail every retry and the entry would
+never load again — and because it is weak evidence anyway: a genuinely
+different window answers with its own UUID rather than with nothing.
+
 ## GATT map
 
 ### Primary service `c1e0d952-…`, characteristics the app binds
