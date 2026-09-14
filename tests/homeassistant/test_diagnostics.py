@@ -59,6 +59,25 @@ async def test_diagnostics_redact_stable_identifiers(
     assert diagnostics["state"]["view_title"] == "Kyoto"
 
 
+async def test_diagnostics_carry_the_settings_the_window_reports(
+    hass: HomeAssistant, fake_bluetooth: FakeBluetooth, loaded_entry: MockConfigEntry
+) -> None:
+    """The quick-settings document is why this download can replace a terminal.
+
+    Whether a key is absent, present with no usable range, or present and
+    merely set to zero are three different faults that look identical from
+    the outside, and the bounds the window reports are what separate them
+    (#13). Redaction must not take them, because none of it identifies a
+    window - it describes a model.
+    """
+    diagnostics = await async_get_config_entry_diagnostics(hass, loaded_entry)
+
+    settings = diagnostics["state"]["quick_settings"]
+    assert settings["LedBrightness"] == {"min": 0, "max": 20, "value": 4}
+    assert settings["SoundOnly"] is False
+    assert settings["CurrentDecoration"] == {"min": 0, "max": 19, "value": 3}
+
+
 async def test_diagnostics_carry_the_live_gatt_table(
     hass: HomeAssistant, fake_bluetooth: FakeBluetooth, loaded_entry: MockConfigEntry
 ) -> None:
