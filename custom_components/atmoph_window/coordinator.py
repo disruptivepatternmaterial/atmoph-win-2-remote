@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import logging
+from collections.abc import AsyncIterator
 from datetime import timedelta
 from typing import Any
 
@@ -16,9 +17,10 @@ from homeassistant.components.bluetooth import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .client import AtmophClient
+from .client import AtmophClient, WrongWindowError
 from .const import (
     CONF_ADVERTISED_NAME,
     CONF_DEVICE_UUID,
@@ -78,17 +80,55 @@ class AtmophCoordinator(DataUpdateCoordinator[AtmophState]):
                 f"Unable to update {self.advertised_name}: {err}"
             ) from err
 
+    @contextlib.asynccontextmanager
+    async def _reporting_failures(self) -> AsyncIterator[None]:
+        """Turn transport and protocol failures into something a user can read.
+
+        Everything wrapped here is reached from a service call, a button or a
+        switch, where an unconverted exception is a traceback in the log and
+        an opaque failure in the interface. The cause is chained, so the
+        detail is still in the log for whoever wants it.
+        """
+        try:
+            yield
+        except HomeAssistantError:
+            raise
+        except WrongWindowError as err:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="wrong_window",
+                translation_placeholders={"name": self.advertised_name},
+            ) from err
+        except TimeoutError as err:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="power_not_confirmed",
+                translation_placeholders={"name": self.advertised_name},
+            ) from err
+        except Exception as err:
+            raise self._unreachable() from err
+
+    def _unreachable(self) -> HomeAssistantError:
+        """Return the error for a window that will not answer."""
+        return HomeAssistantError(
+            translation_domain=DOMAIN,
+            translation_key="not_reachable",
+            translation_placeholders={"name": self.advertised_name},
+        )
+
     async def async_send_command(self, command: str) -> None:
         """Send a command and publish refreshed state."""
-        client = await self._async_ensure_client()
-        await client.send_command(command)
-        self.async_set_updated_data(client.state)
+        async with self._reporting_failures():
+            client = await self._async_ensure_client()
+            await client.send_command(command)
+            self.async_set_updated_data(client.state)
 
     async def async_set_power(self, desired: bool) -> None:
         """Set display power and wait for confirmation."""
-        client = await self._async_ensure_client()
-        await client.set_power(desired)
-        self.async_set_updated_data(client.state)
+        async with self._reporting_failures():
+            client = await self._async_ensure_client()
+            await client.set_power(desired)
+            self.async_set_updated_data(client.state)
 
     @callback
     def async_describe_gatt(self) -> list[dict[str, Any]]:
@@ -111,17 +151,19 @@ class AtmophCoordinator(DataUpdateCoordinator[AtmophState]):
         if reported is not None:
             return reported
 
-        client = await self._async_ensure_client()
-        state = await client.refresh()
-        self.async_set_updated_data(state)
-        return state.quick_settings.get(key)
+        async with self._reporting_failures():
+            client = await self._async_ensure_client()
+            state = await client.refresh()
+            self.async_set_updated_data(state)
+            return state.quick_settings.get(key)
 
     async def async_set_setting(self, key: str, value: bool | int | str) -> None:
         """Write a quick setting."""
-        client = await self._async_ensure_client()
-        await client.set_setting(key, value)
-        client.state.apply_setting_write(key, value)
-        self.async_set_updated_data(client.state)
+        async with self._reporting_failures():
+            client = await self._async_ensure_client()
+            await client.set_setting(key, value)
+            client.state.apply_setting_write(key, value)
+            self.async_set_updated_data(client.state)
 
     async def async_shutdown(self) -> None:
         """Cancel scheduled refreshes and release the BLE connection."""
@@ -134,7 +176,7 @@ class AtmophCoordinator(DataUpdateCoordinator[AtmophState]):
 
         device = self._resolve_device()
         if device is None:
-            raise RuntimeError("No connectable advertisement is currently available")
+            raise self._unreachable()
 
         # Release whatever came before rather than overwriting the reference.
         # A dropped client keeps its notify subscriptions and its disconnect

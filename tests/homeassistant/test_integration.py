@@ -363,8 +363,10 @@ async def test_a_window_never_seen_at_any_address_defers_setup(
     assert entry.state is ConfigEntryState.SETUP_RETRY
     assert fake_bluetooth.clients == []
     # Said in the resolver rather than left to whatever fails first when a
-    # missing device is handed to the connector.
-    assert "No connectable advertisement" in entry.reason
+    # missing device is handed to the connector, and said in terms that name
+    # what the owner can do about it rather than what the code noticed.
+    assert WINDOW_NAME in entry.reason
+    assert "asleep" in entry.reason
 
 
 async def test_display_switch_reads_power_before_toggling(

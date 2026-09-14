@@ -25,6 +25,12 @@
     "no_window_targeted": {
       "message": "No loaded Atmoph Window was targeted. Choose the window to act on."
     },
+    "not_reachable": {
+      "message": "{name} did not answer. The display may be asleep, out of Bluetooth range, or held by the Atmoph phone app."
+    },
+    "power_not_confirmed": {
+      "message": "{name} did not confirm the requested display state. Try again in a few seconds."
+    },
     "setting_not_reported": {
       "message": "The window has not reported a range for this setting yet."
     },
@@ -36,6 +42,9 @@
     },
     "value_out_of_range": {
       "message": "{value} is outside the range the window reports for this setting ({minimum} to {maximum})."
+    },
+    "wrong_window": {
+      "message": "The window answering as {name} reported a different device UUID, so the command was not sent. Two windows may share an advertised name."
     }
   },
   "entity": {

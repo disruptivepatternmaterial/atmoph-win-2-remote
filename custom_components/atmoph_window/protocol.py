@@ -199,9 +199,21 @@ class AtmophState:
         A level is reported as an object carrying the bounds alongside the
         value, but written as the bare value. Storing what was written would
         drop the bounds and leave the setting looking unreported.
+
+        Clamped to the bounds currently held, because the caller validated
+        against whatever was reported earlier. A window that has since
+        narrowed the range will clamp the write itself, and publishing the
+        unclamped value would show a number the device never accepted.
         """
         current = self.quick_settings.get(name)
         if isinstance(current, dict) and "value" in current:
+            level = Level.from_wire(current)
+            if (
+                level is not None
+                and isinstance(value, int)
+                and not isinstance(value, bool)
+            ):
+                value = min(level.maximum, max(level.minimum, value))
             self.quick_settings[name] = {**current, "value": value}
         else:
             self.quick_settings[name] = value

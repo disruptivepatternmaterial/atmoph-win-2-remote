@@ -75,15 +75,15 @@ class AtmophClient:
         VIEW_TITLE_UUID,
         VIEW_IMAGE_UUID,
         VIEW_LOCATION_UUID,
-        FOCUSING_VIEW_UUID,
         QUICK_SETTINGS_UUID,
         POWER_UUID,
     )
 
-    # The app declares this characteristic without ever binding it, and the
-    # only report of a window answering it comes from different hardware, so
-    # every interaction with it is best-effort.
-    _OPTIONAL_NOTIFY_UUIDS = (VIEW_ID_UUID,)
+    # Subscribed because the app does, but not required. The view-id
+    # characteristic is one the app declares and never binds, and nothing
+    # is done with the focused-element payload at all - so a window that
+    # refuses either should still work rather than fail to set up.
+    _OPTIONAL_NOTIFY_UUIDS = (VIEW_ID_UUID, FOCUSING_VIEW_UUID)
 
     def __init__(
         self,

@@ -7,6 +7,7 @@ volume, which is the only one that changes units on the way through.
 
 from __future__ import annotations
 
+import pytest
 from homeassistant.components.media_player import (
     ATTR_MEDIA_VOLUME_LEVEL,
     MediaPlayerEntityFeature,
@@ -26,6 +27,7 @@ from homeassistant.const import (
     STATE_UNAVAILABLE,
 )
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.atmoph_window.media_player import VOLUME_SETTING
@@ -139,6 +141,53 @@ async def test_volume_steps_by_one_unit_the_window_recognises(
         b'{"LandscapeVolumeLevel":13}',
         b'{"LandscapeVolumeLevel":12}',
     ]
+
+
+async def test_volume_is_not_offered_when_the_window_reports_no_range(
+    hass: HomeAssistant, fake_bluetooth: FakeBluetooth, config_entry: MockConfigEntry
+) -> None:
+    """A slider that does nothing cannot be told from a fault.
+
+    The number entity for the same setting already goes unavailable rather
+    than pretending, so the card should not be the one place that accepts a
+    command, writes nothing, and says nothing.
+    """
+    fake_bluetooth.unreported_settings = frozenset({VOLUME_SETTING})
+    config_entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    state = hass.states.get(ENTITY_ID)
+    assert not state.attributes["supported_features"] & (
+        MediaPlayerEntityFeature.VOLUME_SET | MediaPlayerEntityFeature.VOLUME_STEP
+    )
+    # Home Assistant drops the attribute rather than publishing an empty one
+    # once the feature is withdrawn, so the card shows no slider at all.
+    assert ATTR_MEDIA_VOLUME_LEVEL not in state.attributes
+
+    fake_bluetooth.client.writes.clear()
+    # Withdrawing the feature makes Home Assistant itself refuse the call,
+    # which is a better answer than anything the entity could report: the
+    # caller is told the window cannot do this rather than that it declined.
+    with pytest.raises(HomeAssistantError) as err:
+        await call(hass, SERVICE_VOLUME_UP)
+
+    assert err.value.translation_key == "service_not_supported"
+    assert fake_bluetooth.client.settings_writes == []
+
+
+async def test_volume_at_the_ceiling_writes_nothing_further(
+    hass: HomeAssistant, fake_bluetooth: FakeBluetooth, loaded_entry: MockConfigEntry
+) -> None:
+    """Stepping clamps, so repeating a press at the top must stop writing."""
+    await call(hass, SERVICE_VOLUME_SET, volume_level=1.0)
+    await hass.async_block_till_done()
+    fake_bluetooth.client.writes.clear()
+
+    await call(hass, SERVICE_VOLUME_UP)
+    await hass.async_block_till_done()
+
+    assert fake_bluetooth.client.settings_writes == []
 
 
 async def test_a_dropped_connection_makes_the_player_unavailable(

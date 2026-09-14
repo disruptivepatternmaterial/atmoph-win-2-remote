@@ -16,8 +16,10 @@ from homeassistant.components.media_player import (
     MediaPlayerState,
 )
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
+from .const import DOMAIN
 from .coordinator import AtmophConfigEntry, AtmophCoordinator
 from .entity import AtmophEntity
 from .protocol import Level
@@ -42,13 +44,14 @@ class AtmophMediaPlayer(AtmophEntity, MediaPlayerEntity):
     _attr_media_content_type = "video"
     # Deliberately no PLAY or PAUSE: the protocol has no such command, and
     # advertising one that silently does nothing is worse than omitting it.
-    _attr_supported_features = (
+    _BASE_FEATURES = (
         MediaPlayerEntityFeature.TURN_ON
         | MediaPlayerEntityFeature.TURN_OFF
         | MediaPlayerEntityFeature.NEXT_TRACK
         | MediaPlayerEntityFeature.PREVIOUS_TRACK
-        | MediaPlayerEntityFeature.VOLUME_SET
-        | MediaPlayerEntityFeature.VOLUME_STEP
+    )
+    _VOLUME_FEATURES = (
+        MediaPlayerEntityFeature.VOLUME_SET | MediaPlayerEntityFeature.VOLUME_STEP
     )
 
     def __init__(self, coordinator: AtmophCoordinator) -> None:
@@ -78,6 +81,18 @@ class AtmophMediaPlayer(AtmophEntity, MediaPlayerEntity):
         return self.coordinator.data.view_image_url
 
     @property
+    def supported_features(self) -> MediaPlayerEntityFeature:
+        """Offer volume only while the window is reporting a range for it.
+
+        A card that shows a volume slider doing nothing cannot be told from a
+        fault, and the number entity for the same setting already goes
+        unavailable rather than pretending.
+        """
+        if self._volume is None:
+            return self._BASE_FEATURES
+        return self._BASE_FEATURES | self._VOLUME_FEATURES
+
+    @property
     def volume_level(self) -> float | None:
         """Return the landscape volume as a fraction of its reported range."""
         level = self._volume
@@ -105,9 +120,7 @@ class AtmophMediaPlayer(AtmophEntity, MediaPlayerEntity):
 
     async def async_set_volume_level(self, volume: float) -> None:
         """Set the landscape volume from a fraction of its reported range."""
-        if (level := self._volume) is None:
-            return
-        await self._async_write_volume(level.at_fraction(volume))
+        await self._async_write_volume(self._required_volume().at_fraction(volume))
 
     async def async_volume_up(self) -> None:
         """Raise the landscape volume by one step the window recognises."""
@@ -118,9 +131,24 @@ class AtmophMediaPlayer(AtmophEntity, MediaPlayerEntity):
         await self._async_step_volume(-1)
 
     async def _async_step_volume(self, steps: int) -> None:
+        await self._async_write_volume(self._required_volume().stepped(steps))
+
+    def _required_volume(self) -> Level:
+        """Return the reported volume range, or say why there is none.
+
+        Returning quietly would accept the command, write nothing, and log
+        nothing - indistinguishable from a window that ignored it.
+        """
         if (level := self._volume) is None:
-            return
-        await self._async_write_volume(level.stepped(steps))
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="setting_not_reported",
+            )
+        return level
 
     async def _async_write_volume(self, value: int) -> None:
+        if (current := self._volume) is not None and current.value == value:
+            # Already there. The step clamps at the ends, so repeating a press
+            # at the ceiling would otherwise write the same value each time.
+            return
         await self.coordinator.async_set_setting(VOLUME_SETTING, value)
