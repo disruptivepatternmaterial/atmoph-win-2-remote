@@ -131,6 +131,80 @@ async def test_bluetooth_discovery_updates_the_address_of_a_known_window(
     assert config_entry.data["address"] == ROTATED_ADDRESS
 
 
+async def test_a_renamed_window_keeps_its_entry_and_its_history(
+    hass: HomeAssistant, config_entry: MockConfigEntry
+) -> None:
+    """Renaming a window in the app must not cost it its entity history.
+
+    The rename changes the only value discovery can match on, so the entry
+    has to be recognised by address instead and moved onto the new name. The
+    alternative is a second entry for one window, with the original stranded
+    on a name nothing advertises and reachable only by deleting it.
+    """
+    config_entry.add_to_hass(hass)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": SOURCE_BLUETOOTH},
+        data=make_service_info(name="Study Window", address=WINDOW_ADDRESS),
+    )
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "already_configured"
+
+    entries = hass.config_entries.async_entries(DOMAIN)
+    assert len(entries) == 1
+    assert entries[0].entry_id == config_entry.entry_id
+    assert entries[0].unique_id == "Study Window"
+    assert entries[0].data[CONF_ADVERTISED_NAME] == "Study Window"
+    assert entries[0].title == "Study Window"
+
+
+async def test_a_rename_seen_after_a_rotation_is_not_recognised(
+    hass: HomeAssistant, config_entry: MockConfigEntry
+) -> None:
+    """The address match is a heuristic, and this is the case it cannot catch.
+
+    Both identifiers have changed at once, leaving the advertisement with
+    nothing in common with the stored entry, so a second entry is correct
+    here: the flow cannot tell this from a genuinely new window. Recorded as
+    a test because it is the known limit of the rename fix rather than an
+    oversight in it.
+    """
+    config_entry.add_to_hass(hass)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": SOURCE_BLUETOOTH},
+        data=make_service_info(name="Study Window", address=ROTATED_ADDRESS),
+    )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "confirm"
+
+
+async def test_a_second_advertisement_of_the_same_name_is_not_treated_as_a_rename(
+    hass: HomeAssistant, config_entry: MockConfigEntry
+) -> None:
+    """An unchanged name at a known address is ordinary rediscovery.
+
+    Taking it for a rename would rewrite the entry on every advertisement,
+    so the address match only fires when the name has actually moved.
+    """
+    config_entry.add_to_hass(hass)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": SOURCE_BLUETOOTH},
+        data=make_service_info(name=WINDOW_NAME, address=WINDOW_ADDRESS),
+    )
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "already_configured"
+    assert len(hass.config_entries.async_entries(DOMAIN)) == 1
+    assert hass.config_entries.async_entries(DOMAIN)[0].unique_id == WINDOW_NAME
+
+
 async def test_rediscovery_still_matches_a_window_keyed_on_its_device_uuid(
     hass: HomeAssistant, config_entry: MockConfigEntry
 ) -> None:

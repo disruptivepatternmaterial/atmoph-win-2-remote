@@ -7,7 +7,7 @@ from typing import Any
 import voluptuous as vol
 from homeassistant.components import bluetooth
 from homeassistant.components.bluetooth import BluetoothServiceInfoBleak
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult
 
 from .const import CONF_ADVERTISED_NAME, CONF_DEVICE_UUID, DOMAIN
 from .protocol import SERVICE_UUID
@@ -36,6 +36,16 @@ class AtmophWindowConfigFlow(ConfigFlow, domain=DOMAIN):
         if not name or _looks_like_address(name, discovery_info.address):
             return self.async_abort(reason="cannot_identify")
 
+        renamed = self._entry_at_address(discovery_info.address, name)
+        if renamed is not None:
+            self.hass.config_entries.async_update_entry(
+                renamed,
+                title=name,
+                unique_id=name,
+                data={**renamed.data, CONF_ADVERTISED_NAME: name},
+            )
+            return self.async_abort(reason="already_configured")
+
         await self.async_set_unique_id(name)
         self._abort_if_unique_id_configured(
             updates={"address": discovery_info.address},
@@ -44,6 +54,31 @@ class AtmophWindowConfigFlow(ConfigFlow, domain=DOMAIN):
         self._discovery = discovery_info
         self.context["title_placeholders"] = {"name": name}
         return await self.async_step_confirm()
+
+    def _entry_at_address(self, address: str, name: str) -> ConfigEntry | None:
+        """Return the entry for a window that has been renamed, if there is one.
+
+        Renaming a window in the Atmoph app changes the only thing discovery
+        can match on, so without this the rename produces a second entry and
+        strands the first on a name nothing advertises any more. Recovering
+        from that costs the window its history, which is a large penalty for
+        an ordinary act.
+
+        Matching on the address is a heuristic, because addresses rotate as
+        often as every forty seconds: it catches a rename seen before the next
+        rotation and misses one seen after. That is worth having anyway, since
+        the failure mode is the second entry that would have been created
+        regardless. It cannot merge two different windows that happen to share
+        an address, because the device UUID is still checked after connecting
+        and a mismatch is refused there.
+        """
+        for entry in self._async_current_entries(include_ignore=False):
+            if entry.data.get("address") != address:
+                continue
+            if entry.data.get(CONF_ADVERTISED_NAME) == name:
+                continue
+            return entry
+        return None
 
     async def async_step_confirm(
         self, user_input: dict[str, Any] | None = None
