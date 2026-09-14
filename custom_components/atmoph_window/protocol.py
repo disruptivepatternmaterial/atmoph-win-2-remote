@@ -111,8 +111,14 @@ class Level:
 
         A step is one unit the window recognises rather than a tenth of the
         range, because the range can be as coarse as six values.
+
+        The clamp is ordered so a window reporting an inverted range still
+        moves in the direction asked. Clamping to `maximum` first would snap
+        both directions to the same end and make the control look stuck.
         """
-        return min(self.maximum, max(self.minimum, self.value + steps))
+        moved = self.value + steps
+        low, high = min(self.minimum, self.maximum), max(self.minimum, self.maximum)
+        return min(high, max(low, moved))
 
 
 @dataclass(slots=True)

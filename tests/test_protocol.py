@@ -391,6 +391,18 @@ def test_a_level_steps_by_device_units_and_stops_at_the_bounds() -> None:
     assert Level(minimum=0, maximum=5, value=0).stepped(-1) == 0
 
 
+def test_an_inverted_range_still_steps_in_the_direction_asked() -> None:
+    """A window reporting its bounds backwards must not look stuck.
+
+    Clamping to `maximum` before `minimum` snapped both directions to the
+    same end, so every press appeared to do nothing in one of them.
+    """
+    inverted = Level(minimum=5, maximum=0, value=2)
+
+    assert inverted.stepped(1) == 3
+    assert inverted.stepped(-1) == 1
+
+
 @pytest.mark.asyncio
 async def test_the_gatt_table_is_described_in_a_stable_order() -> None:
     """A report has to be diffable between two windows, so order is fixed.

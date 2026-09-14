@@ -249,7 +249,12 @@ class AtmophCoordinator(DataUpdateCoordinator[AtmophState]):
     # thread its backend runs on, and Home Assistant refuses to write entity
     # state off the event loop. Both hops therefore go through the loop.
     def _handle_state(self, state: AtmophState) -> None:
-        self.hass.loop.call_soon_threadsafe(self._publish_pushed_state, state)
+        # Config entries are not unloaded when Home Assistant stops, so this
+        # can arrive from a bleak thread after the loop has closed. There is
+        # nothing to deliver to at that point, and raising here surfaces as
+        # noise from a thread nobody is watching.
+        with contextlib.suppress(RuntimeError):
+            self.hass.loop.call_soon_threadsafe(self._publish_pushed_state, state)
 
     @callback
     def _publish_pushed_state(self, state: AtmophState) -> None:
@@ -267,7 +272,8 @@ class AtmophCoordinator(DataUpdateCoordinator[AtmophState]):
         self.async_update_listeners()
 
     def _disconnected(self, client: Any) -> None:
-        self.hass.loop.call_soon_threadsafe(self._mark_disconnected, client)
+        with contextlib.suppress(RuntimeError):
+            self.hass.loop.call_soon_threadsafe(self._mark_disconnected, client)
 
     @callback
     def _mark_disconnected(self, client: Any = None) -> None:
