@@ -73,6 +73,25 @@ def test_an_oversized_value_is_flagged_and_keeps_its_real_length() -> None:
     assert rendered.length == 522
 
 
+def test_an_oversized_value_cut_mid_codepoint_is_still_read_as_text() -> None:
+    """A display limit must not be reported as an undecodable value.
+
+    `MAX_VALUE_BYTES` is not a codepoint boundary, so shortening the bytes
+    before decoding lands inside a multi-byte character whenever the value is
+    non-ASCII - and the report then presents perfectly good Japanese as binary
+    for a reason that lives in this tool rather than on the device.
+    """
+    # 3 bytes per character, so the 512-byte mark falls inside one.
+    raw = ("鴨" * 200).encode()
+    assert MAX_VALUE_BYTES % len("鴨".encode()) != 0
+
+    rendered = render_value(raw)
+
+    assert rendered.truncated
+    assert rendered.text is not None
+    assert rendered.text.startswith("鴨鴨")
+
+
 def test_a_control_character_falls_back_to_hex() -> None:
     """Text that decodes but is unprintable is not text worth printing."""
     assert render_value(b"a\x07b").text is None

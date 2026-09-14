@@ -147,14 +147,23 @@ class WindowDump:
 
 
 def render_value(raw: bytes) -> ValueDump:
-    """Render a value as UTF-8 when it decodes cleanly, hex otherwise."""
+    """Render a value as UTF-8 when it decodes cleanly, hex otherwise.
+
+    The whole value is decoded and the resulting text shortened afterwards,
+    rather than the bytes being cut first. Cutting first can land mid
+    codepoint, which makes valid UTF-8 raise and be reported as undecodable
+    binary - a statement about this tool's display limit dressed up as a
+    finding about the window.
+    """
     body = bytes(raw[:MAX_VALUE_BYTES])
     try:
-        text: str | None = decode_text(body)
+        text: str | None = decode_text(bytes(raw))
     except UnicodeDecodeError:
         text = None
     if text and not all(character.isprintable() for character in text):
         text = None
+    if text is not None:
+        text = text[:MAX_VALUE_BYTES]
     return ValueDump(
         length=len(raw),
         text=text,
