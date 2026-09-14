@@ -295,13 +295,17 @@ class AtmophClient:
         one, so an unconfirmed write is retried after a longer pause rather
         than treated as a failure.
         """
-        self.state.apply_power(await self._read(POWER_UUID))
-        if self.state.power == desired:
-            return
-
         for attempt in range(_POWER_ATTEMPTS):
             if attempt:
                 await asyncio.sleep(_POWER_RETRY_DELAY)
+            # Every attempt looks first, which is what the retry depends on.
+            # A display that confirmed late and one that dropped the write are
+            # indistinguishable until this read, and toggling without it turns
+            # the first into an inversion: the display ends up where the user
+            # did not ask for it and nothing raises.
+            self._apply_power_read(await self._read(POWER_UUID))
+            if self.state.power == desired:
+                return
             await self.send_command("sleep_toggle")
             if await self._await_power(desired):
                 return

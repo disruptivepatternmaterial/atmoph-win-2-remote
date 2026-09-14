@@ -186,6 +186,56 @@ async def test_a_dropped_connection_makes_the_entities_unavailable(
     assert loaded_entry.runtime_data.last_update_success is False
 
 
+async def test_a_superseded_links_disconnect_is_ignored(
+    hass: HomeAssistant, fake_bluetooth: FakeBluetooth, loaded_entry: MockConfigEntry
+) -> None:
+    """A late callback from a replaced link must not take down its replacement.
+
+    Addresses rotate every few tens of seconds, so a disconnect notice
+    arriving after the reconnect has already succeeded is ordinary here.
+    Acting on it reported the entry unavailable while the new connection was
+    still open, and left the old link's subscriptions alive with nothing
+    holding a reference to close them.
+    """
+    display = entity_id_for(hass, "switch", "display")
+    superseded = fake_bluetooth.client
+
+    # Drop the link without announcing it, so the notice is still in flight.
+    superseded.connected = False
+    fake_bluetooth.advertise(make_service_info(address=ROTATED_ADDRESS))
+    await hass.async_block_till_done()
+
+    current = fake_bluetooth.client
+    assert current is not superseded
+    assert hass.states.get(display).state == STATE_ON
+
+    # The old link's notice finally arrives.
+    superseded.disconnected_callback(superseded)
+    await hass.async_block_till_done()
+
+    assert hass.states.get(display).state == STATE_ON
+    assert loaded_entry.runtime_data.last_update_success is True
+
+
+async def test_a_replaced_connection_is_closed_rather_than_dropped(
+    hass: HomeAssistant, fake_bluetooth: FakeBluetooth, loaded_entry: MockConfigEntry
+) -> None:
+    """Overwriting the reference leaves a live link nothing will ever close.
+
+    A discarded client keeps its notify subscriptions and its disconnect
+    callback armed, so it goes on delivering into an object the coordinator
+    has forgotten.
+    """
+    superseded = fake_bluetooth.client
+    superseded.connected = False
+
+    fake_bluetooth.advertise(make_service_info(address=ROTATED_ADDRESS))
+    await hass.async_block_till_done()
+
+    assert fake_bluetooth.client is not superseded
+    assert superseded.notifications == {}
+
+
 async def test_a_deliberate_disconnect_on_unload_reports_no_error(
     hass: HomeAssistant, fake_bluetooth: FakeBluetooth, loaded_entry: MockConfigEntry
 ) -> None:

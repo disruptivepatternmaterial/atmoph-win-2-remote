@@ -160,6 +160,12 @@ class FakeBleakClient:
         A characteristic the window does not implement is missing rather than
         empty, which is what a real read of one raises on.
         """
+        # The display reports a change only once it has had time to; see
+        # DisplayPower.confirm_after.
+        if char_specifier == POWER_UUID and self.display.take_due_change():
+            self.values[POWER_UUID] = (
+                b"false" if self.values[POWER_UUID] == b"true" else b"true"
+            )
         return bytearray(self.values[char_specifier])
 
     async def write_gatt_char(
@@ -171,10 +177,8 @@ class FakeBleakClient:
         # The window advertises write on it and ignores both directions, so
         # anything that relies on one has to fail.
         self.writes.append((char_specifier, data))
-        if char_specifier == COMMAND_UUID and data == b"S" and self.display.toggle():
-            self.values[POWER_UUID] = (
-                b"false" if self.values[POWER_UUID] == b"true" else b"true"
-            )
+        if char_specifier == COMMAND_UUID and data == b"S":
+            self.display.toggle()
         elif char_specifier == QUICK_SETTINGS_UUID:
             self._apply_setting(data)
 

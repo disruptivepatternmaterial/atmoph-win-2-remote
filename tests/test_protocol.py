@@ -310,6 +310,12 @@ class FakeBleakClient:
 
     async def read_gatt_char(self, char_specifier: str) -> bytearray:
         self.reads.append(char_specifier)
+        # The display reports a change only once it has had time to; see
+        # DisplayPower.confirm_after.
+        if char_specifier == POWER_UUID and self.display.take_due_change():
+            self.values[POWER_UUID] = (
+                b"false" if self.values[POWER_UUID] == b"true" else b"true"
+            )
         return bytearray(self.values[char_specifier])
 
     async def write_gatt_char(
@@ -319,10 +325,8 @@ class FakeBleakClient:
         # The window advertises write on it and ignores both directions, so
         # anything that relies on one has to fail here.
         self.writes.append((char_specifier, data, response))
-        if char_specifier == COMMAND_UUID and data == b"S" and self.display.toggle():
-            self.values[POWER_UUID] = (
-                b"false" if self.values[POWER_UUID] == b"true" else b"true"
-            )
+        if char_specifier == COMMAND_UUID and data == b"S":
+            self.display.toggle()
 
     async def start_notify(
         self, char_specifier: str, callback: Callable[[Any, bytearray], None]
@@ -850,6 +854,33 @@ async def test_power_control_is_idempotent_and_confirmed(clock: FakeClock) -> No
 
     await client.set_power(False)
     assert peripheral.writes == [(COMMAND_UUID, b"S", True)]
+    assert client.state.power is False
+
+
+@pytest.mark.asyncio
+async def test_power_control_does_not_toggle_twice_over_a_late_confirmation(
+    clock: FakeClock,
+) -> None:
+    """A slow display must not be toggled back to where it started.
+
+    The confirmation budget is three seconds and the retry pause is two, so a
+    display that takes longer than that to report is guaranteed to be toggled
+    a second time - well outside the window in which a toggle is dropped, so
+    the second one lands and undoes the first. The user asks for off, the
+    display ends on, and the reported state says off, which is the exact
+    inversion the read-before-toggle design exists to prevent.
+    """
+    peripheral = FakeBleakClient(power=True, clock=clock)
+    # Longer than the three seconds of confirmation polling, so the display
+    # is certain to still be reporting its old value when the retry is due.
+    peripheral.display.confirm_after = 3.5
+    client = AtmophClient(peripheral)
+
+    await client.set_power(False)
+
+    accepted = [toggle for toggle in peripheral.display.toggles if toggle.accepted]
+    assert len(accepted) == 1, "the display was toggled back to where it started"
+    assert peripheral.values[POWER_UUID] == b"false"
     assert client.state.power is False
 
 

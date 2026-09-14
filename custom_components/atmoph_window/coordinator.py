@@ -136,6 +136,11 @@ class AtmophCoordinator(DataUpdateCoordinator[AtmophState]):
         if device is None:
             raise RuntimeError("No connectable advertisement is currently available")
 
+        # Release whatever came before rather than overwriting the reference.
+        # A dropped client keeps its notify subscriptions and its disconnect
+        # callback armed, so leaking one leaves a live link nothing will close.
+        await self._async_disconnect()
+
         self._last_address = device.address
         self._bleak = await establish_connection(
             BleakClientWithServiceCache,
@@ -186,11 +191,17 @@ class AtmophCoordinator(DataUpdateCoordinator[AtmophState]):
         self.hass.loop.call_soon_threadsafe(self.async_set_updated_data, state)
 
     def _disconnected(self, client: Any) -> None:
-        del client
-        self.hass.loop.call_soon_threadsafe(self._mark_disconnected)
+        self.hass.loop.call_soon_threadsafe(self._mark_disconnected, client)
 
     @callback
-    def _mark_disconnected(self) -> None:
+    def _mark_disconnected(self, client: Any = None) -> None:
+        # Addresses rotate every few tens of seconds, so a disconnect callback
+        # arriving after its replacement is already up is ordinary here. Acting
+        # on it would take down a healthy connection and report the entry
+        # unavailable while the new link was still open.
+        if client is not None and client is not self._bleak:
+            return
+
         self._bleak = None
         self._client = None
         # Entities would otherwise keep serving the last state they were told,

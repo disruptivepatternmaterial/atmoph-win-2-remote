@@ -154,12 +154,22 @@ class DisplayPower:
     a memory of its own.
     """
 
-    def __init__(self, clock: FakeClock, last_toggle_at: float | None = None) -> None:
+    def __init__(
+        self,
+        clock: FakeClock,
+        last_toggle_at: float | None = None,
+        confirm_after: float = 0.0,
+    ) -> None:
         self.clock = clock
         self.toggles: list[Toggle] = []
         # None stands for a display nobody has touched recently, so the next
         # toggle lands outside the window in which one is discarded.
         self._accepted_at = last_toggle_at
+        # How long the display takes to report a change it has accepted. Zero
+        # is the convenient lie: it makes a late confirmation impossible to
+        # express, and a late confirmation is how a retry inverts a display.
+        self.confirm_after = confirm_after
+        self._pending_at: float | None = None
 
     def touch(self) -> None:
         """Record a toggle that took effect just now, from the panel or the app."""
@@ -174,4 +184,19 @@ class DisplayPower:
         self.toggles.append(Toggle(self.clock.now, self.clock.last_sleep, accepted))
         if accepted:
             self._accepted_at = self.clock.now
+            self._pending_at = self.clock.now
         return accepted
+
+    def take_due_change(self) -> bool:
+        """Return whether an accepted toggle has become visible by now.
+
+        Separated from `toggle` so the characteristic can keep reporting the
+        old value for `confirm_after`, which is the only way a caller can be
+        made to give up on a toggle that actually worked.
+        """
+        if self._pending_at is None:
+            return False
+        if self.clock.now - self._pending_at < self.confirm_after:
+            return False
+        self._pending_at = None
+        return True
