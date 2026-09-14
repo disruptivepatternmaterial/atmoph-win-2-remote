@@ -1,10 +1,14 @@
-"""Offline verification of tools/atmoph_diag.py.
+"""Offline verification of the BLE diagnostic in tools/.
 
 What is checked here is everything the tool can get wrong without a device in
 front of it: how it renders a value, what it concludes about the LEDs, how it
 reads a write echo, and what a normalized report still contains. The scan, the
 connect, and the real GATT enumeration cannot be reached without hardware and
 are not covered.
+
+Every name comes from the module that owns it, so a failure names the layer at
+fault: the recovered tables in atmoph_catalog.py, the dump and its report in
+atmoph_dump.py, the transport and the command line in atmoph_diag.py.
 
 See tests/tools/fakes.py for the window these drive.
 """
@@ -17,41 +21,61 @@ import json
 import pytest
 
 import atmoph_diag as diag
+from atmoph_catalog import (
+    KNOWN_CHARACTERISTICS,
+    MASK,
+    MAX_VALUE_BYTES,
+    SECOND_SERVICE_UUID,
+    SERVICE_LABELS,
+)
+from atmoph_dump import (
+    CharacteristicDump,
+    SettingDump,
+    Target,
+    WindowDump,
+    analyse_leds,
+    describe_settings,
+    format_dump,
+    normalize,
+    render_value,
+    report_header,
+    slug,
+)
 from custom_components.atmoph_window import protocol
 from tests.tools.fakes import WORKING_SETTINGS, FakeWindow
 
 
 def test_a_utf8_value_renders_as_text() -> None:
     """A value that decodes cleanly is shown as text, at its real length."""
-    rendered = diag.render_value(b"Kamikochi")
+    rendered = render_value(b"Kamikochi")
     assert rendered.text == "Kamikochi"
     assert rendered.length == 9
 
 
 def test_a_binary_value_renders_as_hex_alone() -> None:
     """A value that does not decode gets no text, only hex."""
-    rendered = diag.render_value(b"\x00\xff\x10\x80")
+    rendered = render_value(b"\x00\xff\x10\x80")
     assert rendered.text is None
     assert rendered.hex == "00 ff 10 80"
 
 
 def test_nul_padding_is_stripped_from_text_and_kept_in_hex() -> None:
     """Padding has to disappear from the text and stay visible in the hex."""
-    rendered = diag.render_value(b"ok\x00\x00")
+    rendered = render_value(b"ok\x00\x00")
     assert rendered.text == "ok"
     assert rendered.hex == "6f 6b 00 00"
 
 
 def test_an_oversized_value_is_flagged_and_keeps_its_real_length() -> None:
     """The hex is truncated, but the report still says how long the value was."""
-    rendered = diag.render_value(b"a" * (diag.MAX_VALUE_BYTES + 10))
+    rendered = render_value(b"a" * (MAX_VALUE_BYTES + 10))
     assert rendered.truncated
     assert rendered.length == 522
 
 
 def test_a_control_character_falls_back_to_hex() -> None:
     """Text that decodes but is unprintable is not text worth printing."""
-    assert diag.render_value(b"a\x07b").text is None
+    assert render_value(b"a\x07b").text is None
 
 
 # A document with one level, one boolean, one key of the wrong type, and one
@@ -65,55 +89,55 @@ MIXED_DOCUMENT: dict[str, object] = {
 
 
 @pytest.fixture
-def described() -> list[diag.SettingDump]:
-    return diag.describe_settings(MIXED_DOCUMENT)
+def described() -> list[SettingDump]:
+    return describe_settings(MIXED_DOCUMENT)
 
 
 @pytest.fixture
-def by_key(described: list[diag.SettingDump]) -> dict[str, diag.SettingDump]:
+def by_key(described: list[SettingDump]) -> dict[str, SettingDump]:
     return {dump.key: dump for dump in described}
 
 
 def test_every_known_setting_key_is_described(
-    described: list[diag.SettingDump],
+    described: list[SettingDump],
 ) -> None:
     """A key the window omitted still gets a row, so its absence is visible."""
-    assert len(described) == len(diag.SETTING_KEYS) + 1
+    assert len(described) == len(protocol.SETTING_KEYS) + 1
 
 
-def test_described_settings_are_sorted(described: list[diag.SettingDump]) -> None:
+def test_described_settings_are_sorted(described: list[SettingDump]) -> None:
     """Report order must not depend on the order the window sent."""
     assert [dump.key for dump in described] == sorted(dump.key for dump in described)
 
 
 def test_a_level_reports_its_kind_and_bounds(
-    by_key: dict[str, diag.SettingDump],
+    by_key: dict[str, SettingDump],
 ) -> None:
     assert by_key["ScreenBrightness"].kind == "level"
     assert by_key["ScreenBrightness"].maximum == 25
 
 
-def test_a_boolean_reports_its_kind(by_key: dict[str, diag.SettingDump]) -> None:
+def test_a_boolean_reports_its_kind(by_key: dict[str, SettingDump]) -> None:
     assert by_key["SoundOnly"].kind == "bool"
 
 
-def test_a_missing_key_reads_absent(by_key: dict[str, diag.SettingDump]) -> None:
+def test_a_missing_key_reads_absent(by_key: dict[str, SettingDump]) -> None:
     assert by_key["LedBrightness"].kind == "absent"
 
 
 def test_a_non_level_string_is_not_a_level(
-    by_key: dict[str, diag.SettingDump],
+    by_key: dict[str, SettingDump],
 ) -> None:
     assert by_key["CurrentDecoration"].kind == "other"
 
 
-def test_an_unexpected_key_survives(by_key: dict[str, diag.SettingDump]) -> None:
+def test_an_unexpected_key_survives(by_key: dict[str, SettingDump]) -> None:
     """A key the app never named is evidence, so it is reported rather than dropped."""
     assert by_key["UnknownFromFirmware"].value == 3
 
 
 def test_a_level_missing_its_bounds_is_malformed() -> None:
-    described = diag.describe_settings({"LedBrightness": {"value": 3}})
+    described = describe_settings({"LedBrightness": {"value": 3}})
     assert {dump.key: dump.kind for dump in described}["LedBrightness"] == "malformed"
 
 
@@ -142,26 +166,26 @@ def test_each_led_verdict_is_reached_and_explains_itself(
     The verdict is the whole point of the tool: it is what separates a unit
     whose firmware does not model LEDs from one that has them switched off.
     """
-    finding = diag.analyse_leds(document)
+    finding = analyse_leds(document)
     assert finding.verdict == verdict
     assert finding.detail
 
 
 def test_sound_only_is_reported_as_a_gate() -> None:
     """Audio-only mode may darken the panel by design, so it cannot be silent."""
-    finding = diag.analyse_leds({**WORKING_SETTINGS, "SoundOnly": True})
+    finding = analyse_leds({**WORKING_SETTINGS, "SoundOnly": True})
     assert any("audio-only" in gate for gate in finding.gates)
 
 
 def test_the_decoration_is_reported_as_a_gate() -> None:
     """Whether a decoration can hold the LEDs off is unverified, so it is reported."""
-    finding = diag.analyse_leds(WORKING_SETTINGS)
+    finding = analyse_leds(WORKING_SETTINGS)
     assert any(gate.startswith("CurrentDecoration is 3") for gate in finding.gates)
 
 
 def test_an_empty_document_has_no_gates() -> None:
     """With nothing read, there is nothing to say about what might gate the LEDs."""
-    assert diag.analyse_leds({}).gates == []
+    assert analyse_leds({}).gates == []
 
 
 @pytest.fixture
@@ -170,39 +194,39 @@ def working_window() -> FakeWindow:
 
 
 @pytest.fixture
-async def working_dump(working_window: FakeWindow) -> diag.WindowDump:
+async def working_dump(working_window: FakeWindow) -> WindowDump:
     dump = await diag.collect_dump(
-        working_window, diag.Target(address="AA:BB:CC:DD:EE:FF", name="Studio")
+        working_window, Target(address="AA:BB:CC:DD:EE:FF", name="Studio")
     )
     await working_window.drain()
     return dump
 
 
-def test_both_vendor_services_are_enumerated(working_dump: diag.WindowDump) -> None:
+def test_both_vendor_services_are_enumerated(working_dump: WindowDump) -> None:
     """The second service is unknown to the app, so a dump that misses it is useless."""
     assert len(working_dump.services) == 2
     uuids = [service.uuid for service in working_dump.services]
-    assert uuids.count(diag.SECOND_SERVICE_UUID) == 1
+    assert uuids.count(SECOND_SERVICE_UUID) == 1
 
 
 def test_the_identity_characteristic_yields_a_uuid_and_a_name(
-    working_dump: diag.WindowDump,
+    working_dump: WindowDump,
 ) -> None:
     assert working_dump.device_uuid is not None
     assert working_dump.device_uuid[:8] == "0f8c1d3a"
     assert working_dump.device_name == "Studio"
 
 
-def test_the_negotiated_mtu_is_recorded(working_dump: diag.WindowDump) -> None:
+def test_the_negotiated_mtu_is_recorded(working_dump: WindowDump) -> None:
     assert working_dump.mtu_negotiated == 128
 
 
-def test_quick_settings_come_from_a_plain_read(working_dump: diag.WindowDump) -> None:
+def test_quick_settings_come_from_a_plain_read(working_dump: WindowDump) -> None:
     """A readable document needs no provoking, and the report says which it was."""
     assert working_dump.quick_settings_source == ["read"]
 
 
-def test_a_working_window_reads_as_range_on(working_dump: diag.WindowDump) -> None:
+def test_a_working_window_reads_as_range_on(working_dump: WindowDump) -> None:
     assert working_dump.led is not None
     assert working_dump.led.verdict == "range-on"
 
@@ -213,7 +237,7 @@ def test_a_dump_writes_nothing_unless_asked(working_window: FakeWindow) -> None:
     assert working_window.writes == []
 
 
-def _characteristics(dump: diag.WindowDump) -> list[diag.CharacteristicDump]:
+def _characteristics(dump: WindowDump) -> list[CharacteristicDump]:
     return [
         characteristic
         for service in dump.services
@@ -221,14 +245,14 @@ def _characteristics(dump: diag.WindowDump) -> list[diag.CharacteristicDump]:
     ]
 
 
-def test_known_characteristics_are_labelled(working_dump: diag.WindowDump) -> None:
+def test_known_characteristics_are_labelled(working_dump: WindowDump) -> None:
     """A bare UUID table explains nothing, so the recovered labels are attached."""
     labelled = [c for c in _characteristics(working_dump) if c.label]
     assert len(labelled) >= 6
 
 
 def test_every_characteristic_declaring_read_answers_the_read(
-    working_dump: diag.WindowDump,
+    working_dump: WindowDump,
 ) -> None:
     failures = [
         c.uuid
@@ -239,16 +263,16 @@ def test_every_characteristic_declaring_read_answers_the_read(
 
 
 def test_a_write_only_characteristic_is_not_read(
-    working_dump: diag.WindowDump,
+    working_dump: WindowDump,
 ) -> None:
     """Reading the command characteristic would be an error the report invented."""
     command = [
-        c for c in _characteristics(working_dump) if c.uuid == diag.COMMAND_UUID
+        c for c in _characteristics(working_dump) if c.uuid == protocol.COMMAND_UUID
     ][0]
     assert command.value is None
 
 
-def test_descriptors_are_enumerated_and_read(working_dump: diag.WindowDump) -> None:
+def test_descriptors_are_enumerated_and_read(working_dump: WindowDump) -> None:
     descriptors = [
         descriptor
         for characteristic in _characteristics(working_dump)
@@ -301,7 +325,7 @@ async def test_a_window_without_the_led_key_is_diagnosed_and_listed() -> None:
     """No write helps a firmware that does not model LEDs, so say so plainly."""
     settings = {k: v for k, v in WORKING_SETTINGS.items() if k != "LedBrightness"}
     window = FakeWindow(settings)
-    dump = await diag.collect_dump(window, diag.Target(address="AA:BB:CC:DD:EE:00"))
+    dump = await diag.collect_dump(window, Target(address="AA:BB:CC:DD:EE:00"))
     await window.drain()
 
     assert dump.led is not None
@@ -313,7 +337,7 @@ async def test_a_window_without_the_led_key_is_diagnosed_and_listed() -> None:
 async def test_an_unreadable_document_leaves_the_led_question_open() -> None:
     """An ATT read refusal is not evidence about the LEDs either way."""
     window = FakeWindow(readable_settings=False)
-    dump = await diag.collect_dump(window, diag.Target(address="AA:BB:CC:DD:EE:01"))
+    dump = await diag.collect_dump(window, Target(address="AA:BB:CC:DD:EE:01"))
     await window.drain()
 
     assert dump.led is not None
@@ -329,7 +353,7 @@ async def test_provoking_recovers_a_document_the_window_will_not_hand_over() -> 
     window = FakeWindow(readable_settings=False)
     dump = await diag.collect_dump(
         window,
-        diag.Target(address="AA:BB:CC:DD:EE:01"),
+        Target(address="AA:BB:CC:DD:EE:01"),
         provoke=True,
         echo_timeout=1.0,
     )
@@ -347,7 +371,7 @@ async def test_a_matched_echo_is_recognised_and_the_old_value_restored() -> None
     window = FakeWindow()
     dump = await diag.collect_dump(
         window,
-        diag.Target(address="AA:BB:CC:DD:EE:02"),
+        Target(address="AA:BB:CC:DD:EE:02"),
         writes=[("LedBrightness", 9)],
         echo_timeout=1.0,
     )
@@ -366,7 +390,7 @@ async def test_a_clamped_echo_is_recognised() -> None:
     window = FakeWindow(echo="clamp", clamp_to=0)
     dump = await diag.collect_dump(
         window,
-        diag.Target(address="AA:BB:CC:DD:EE:03"),
+        Target(address="AA:BB:CC:DD:EE:03"),
         writes=[("LedBrightness", 9)],
         echo_timeout=1.0,
     )
@@ -378,7 +402,7 @@ async def test_a_silent_window_is_recognised() -> None:
     window = FakeWindow(echo="none")
     dump = await diag.collect_dump(
         window,
-        diag.Target(address="AA:BB:CC:DD:EE:04"),
+        Target(address="AA:BB:CC:DD:EE:04"),
         writes=[("LedBrightness", 9)],
         echo_timeout=0.2,
     )
@@ -390,7 +414,7 @@ async def test_a_refused_write_is_recognised_and_records_the_error() -> None:
     window = FakeWindow(echo="reject")
     dump = await diag.collect_dump(
         window,
-        diag.Target(address="AA:BB:CC:DD:EE:05"),
+        Target(address="AA:BB:CC:DD:EE:05"),
         writes=[("LedBrightness", 9)],
         echo_timeout=0.2,
     )
@@ -400,48 +424,46 @@ async def test_a_refused_write_is_recognised_and_records_the_error() -> None:
 
 
 @pytest.fixture
-async def studio_dump() -> diag.WindowDump:
+async def studio_dump() -> WindowDump:
     return await diag.collect_dump(
         FakeWindow(),
-        diag.Target(address="AA:BB:CC:DD:EE:06", name="Studio", rssi=-58),
+        Target(address="AA:BB:CC:DD:EE:06", name="Studio", rssi=-58),
     )
 
 
 @pytest.fixture
-async def bedroom_dump() -> diag.WindowDump:
+async def bedroom_dump() -> WindowDump:
     """A second unit of the same model, differing only in its identity."""
     window = FakeWindow()
     identity = window.services[0].characteristics[0]
     identity.value = b"11112222-3333-4444-5555-666677778888,Bedroom"
     return await diag.collect_dump(
         window,
-        diag.Target(address="11:22:33:44:55:66", name="Bedroom", rssi=-71),
+        Target(address="11:22:33:44:55:66", name="Bedroom", rssi=-71),
     )
 
 
 @pytest.fixture
-def normalized_studio_report(studio_dump: diag.WindowDump) -> str:
-    return diag.format_dump(diag.normalize(studio_dump))
+def normalized_studio_report(studio_dump: WindowDump) -> str:
+    return format_dump(normalize(studio_dump))
 
 
 def test_raw_reports_of_two_units_differ(
-    studio_dump: diag.WindowDump, bedroom_dump: diag.WindowDump
+    studio_dump: WindowDump, bedroom_dump: WindowDump
 ) -> None:
     """Without this, the normalized comparison below would pass on nothing."""
-    assert diag.format_dump(studio_dump) != diag.format_dump(bedroom_dump)
+    assert format_dump(studio_dump) != format_dump(bedroom_dump)
 
 
 def test_normalized_reports_of_identical_units_match(
-    studio_dump: diag.WindowDump, bedroom_dump: diag.WindowDump
+    studio_dump: WindowDump, bedroom_dump: WindowDump
 ) -> None:
     """Diffing two units is the fastest way to separate a broken one from a good one."""
-    assert diag.format_dump(diag.normalize(studio_dump)) == diag.format_dump(
-        diag.normalize(bedroom_dump)
-    )
+    assert format_dump(normalize(studio_dump)) == format_dump(normalize(bedroom_dump))
 
 
 def test_normalization_masks_the_address(normalized_studio_report: str) -> None:
-    assert diag.MASK in normalized_studio_report
+    assert MASK in normalized_studio_report
 
 
 @pytest.mark.parametrize(
@@ -456,31 +478,31 @@ def test_normalization_removes_identifying_values(
 
 def test_the_report_warns_before_sharing() -> None:
     """An unnormalized dump carries device identity into a public repository."""
-    header = diag.report_header()
+    header = report_header()
     assert "WARNING" in header
     assert "public" in header
 
 
 def test_the_filename_stem_uses_the_stable_identity(
-    studio_dump: diag.WindowDump,
+    studio_dump: WindowDump,
 ) -> None:
-    assert diag.slug(studio_dump)[:8] == "0f8c1d3a"
+    assert slug(studio_dump)[:8] == "0f8c1d3a"
 
 
 def test_two_units_get_two_filenames(
-    studio_dump: diag.WindowDump, bedroom_dump: diag.WindowDump
+    studio_dump: WindowDump, bedroom_dump: WindowDump
 ) -> None:
-    assert diag.slug(studio_dump) != diag.slug(bedroom_dump)
+    assert slug(studio_dump) != slug(bedroom_dump)
 
 
 def test_a_masked_dump_has_no_identity_to_name_a_file_after(
-    studio_dump: diag.WindowDump,
+    studio_dump: WindowDump,
 ) -> None:
     """So --out has to name the file from the unmasked dump.
 
     Otherwise every normalized dump of a multi-window run collides on one path.
     """
-    assert diag.slug(diag.normalize(studio_dump)) == "window"
+    assert slug(normalize(studio_dump)) == "window"
 
 
 @pytest.mark.parametrize(
@@ -534,7 +556,7 @@ def test_every_characteristic_the_protocol_names_is_labelled_in_a_dump() -> None
     }
     assert named
     unlabelled = [
-        name for name, uuid in named.items() if uuid not in diag.KNOWN_CHARACTERISTICS
+        name for name, uuid in named.items() if uuid not in KNOWN_CHARACTERISTICS
     ]
     assert unlabelled == []
-    assert protocol.SERVICE_UUID in diag.SERVICE_LABELS
+    assert protocol.SERVICE_UUID in SERVICE_LABELS

@@ -20,8 +20,9 @@ import struct
 from dataclasses import dataclass, field
 from typing import Any
 
-import atmoph_diag as diag
 import atmoph_netscan as netscan
+from atmoph_catalog import SECOND_SERVICE_UUID
+from custom_components.atmoph_window import protocol
 from tests.window import REPORTED_SETTINGS
 
 # The values a window with working LEDs reports. The min/max bounds are the
@@ -56,11 +57,11 @@ WORKING_SETTINGS: dict[str, object] = {
 # The UUIDs the protocol layer does not name are written out, because this is a
 # record of what a window reported rather than a restatement of the constants.
 MAIN_CHARACTERISTICS = (
-    (diag.IDENTITY_UUID, ["read"], b"0f8c1d3a-2b4c-4e6f-9a1b-2c3d4e5f6071,Studio"),
+    (protocol.IDENTITY_UUID, ["read"], b"0f8c1d3a-2b4c-4e6f-9a1b-2c3d4e5f6071,Studio"),
     ("ec812b51-ae67-4cf3-8272-3967b3fc22a0", ["read", "notify"], b"None"),
     ("1d862803-b301-4548-bece-1f1ab61881b8", ["read", "notify"], b"Kamikochi"),
     ("7607f5a4-22bc-4730-9019-c78dc8b50341", ["read", "notify"], b"true"),
-    (diag.COMMAND_UUID, ["write"], None),
+    (protocol.COMMAND_UUID, ["write"], None),
     ("750b35af-a702-4407-95a9-5af779a61785", ["read", "write"], b"\x00\xff\x10\x80"),
 )
 
@@ -127,7 +128,7 @@ class FakeWindow:
     def _build_services(self, second_service: bool) -> list[FakeService]:
         handle = 1
         services: list[FakeService] = []
-        main = FakeService(uuid=diag.SERVICE_UUID, handle=handle)
+        main = FakeService(uuid=protocol.SERVICE_UUID, handle=handle)
         for uuid, properties, value in MAIN_CHARACTERISTICS:
             handle += 1
             main.characteristics.append(
@@ -138,7 +139,7 @@ class FakeWindow:
         handle += 1
         main.characteristics.append(
             FakeCharacteristic(
-                uuid=diag.QUICK_SETTINGS_UUID,
+                uuid=protocol.QUICK_SETTINGS_UUID,
                 handle=handle,
                 properties=["read", "write", "notify"],
                 descriptors=[
@@ -154,7 +155,7 @@ class FakeWindow:
         handle += 2
         services.append(main)
         if second_service:
-            second = FakeService(uuid=diag.SECOND_SERVICE_UUID, handle=handle)
+            second = FakeService(uuid=SECOND_SERVICE_UUID, handle=handle)
             for uuid, properties, value in SECOND_CHARACTERISTICS:
                 handle += 1
                 second.characteristics.append(
@@ -169,7 +170,7 @@ class FakeWindow:
         return services
 
     async def read_gatt_char(self, characteristic: FakeCharacteristic) -> bytearray:
-        if characteristic.uuid == diag.QUICK_SETTINGS_UUID:
+        if characteristic.uuid == protocol.QUICK_SETTINGS_UUID:
             if not self.readable_settings:
                 raise RuntimeError("ATT read not permitted")
             return bytearray(json.dumps(self.settings).encode())
@@ -196,11 +197,11 @@ class FakeWindow:
     ) -> None:
         del response
         self.writes.append((uuid, bytes(data)))
-        if uuid == diag.COMMAND_UUID:
+        if uuid == protocol.COMMAND_UUID:
             if bytes(data) == b"C":
                 self._announce()
             return
-        if uuid != diag.QUICK_SETTINGS_UUID:
+        if uuid != protocol.QUICK_SETTINGS_UUID:
             raise RuntimeError("ATT write not permitted")
         payload = json.loads(data.decode())
         for key, value in payload.items():
@@ -217,7 +218,7 @@ class FakeWindow:
 
     def _announce(self) -> None:
         """Echo the whole document, split so reassembly is exercised."""
-        callback = self._callbacks.get(diag.QUICK_SETTINGS_UUID)
+        callback = self._callbacks.get(protocol.QUICK_SETTINGS_UUID)
         if callback is None:
             return
         body = json.dumps(self.settings).encode()
