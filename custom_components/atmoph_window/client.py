@@ -124,13 +124,14 @@ class AtmophClient:
         await self.refresh()
 
         reported = self.state.device_uuid
-        if (
-            expect_device_uuid is not None
-            and reported is not None
-            and reported != expect_device_uuid
-        ):
+        # A window that reports nothing has not proved it is the right one, so
+        # it is refused too. Otherwise the check is trivially defeated by
+        # saying nothing, and the entry writes to whichever window answered
+        # loudest under the shared advertised name.
+        if expect_device_uuid is not None and reported != expect_device_uuid:
             raise WrongWindowError(
-                f"Connected window reports {reported}, expected {expect_device_uuid}"
+                f"Connected window reports {reported!r}, "
+                f"expected {expect_device_uuid!r}"
             )
 
         await self.send_command("connect_notify")
@@ -194,7 +195,7 @@ class AtmophClient:
             if raw_settings:
                 settings = json.loads(raw_settings)
                 if isinstance(settings, dict):
-                    self.state.apply_quick_settings(settings)
+                    self.state.replace_quick_settings(settings)
             await self._read_view_id()
         return self.state
 

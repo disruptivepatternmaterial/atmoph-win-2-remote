@@ -11,7 +11,7 @@ from typing import Any
 import pytest
 
 from custom_components.atmoph_window import client as client_module
-from custom_components.atmoph_window.client import AtmophClient
+from custom_components.atmoph_window.client import AtmophClient, WrongWindowError
 from custom_components.atmoph_window.protocol import (
     COMMAND_UUID,
     FOCUSING_VIEW_UUID,
@@ -276,10 +276,15 @@ class FakeBleakClient:
         view_id: bool = True,
         clock: FakeClock | None = None,
         last_toggle_at: float | None = None,
+        device_uuid: bool = True,
     ) -> None:
         self.services = GATT_SERVICES
         self.values: dict[str, bytes] = {
-            IDENTITY_UUID: b"device-uuid,Living Room",
+            # A window may answer identity with an empty first field,
+            # reporting a name and no UUID at all.
+            IDENTITY_UUID: (
+                b"device-uuid,Living Room" if device_uuid else b",Living Room"
+            ),
             PANORAMA_ROLE_UUID: b"N",
             VIEW_TITLE_UUID: b"Kyoto",
             VIEW_IMAGE_UUID: b"https://example.invalid/view.jpg",
@@ -412,6 +417,63 @@ async def test_a_peripheral_without_a_service_table_describes_nothing() -> None:
     del peripheral.services
 
     assert AtmophClient(peripheral).describe_gatt() == []
+
+
+@pytest.mark.asyncio
+async def test_a_full_read_drops_a_setting_the_window_no_longer_reports() -> None:
+    """A read returns the whole document, so what is missing is gone.
+
+    Merging a full read keeps serving a value nothing on the device stands
+    behind - a slider for a setting the window dropped, reporting bounds it
+    no longer has.
+    """
+    peripheral = FakeBleakClient()
+    client = AtmophClient(peripheral)
+    await client.initialize()
+    assert "LedBrightness" in client.state.quick_settings
+
+    shrunk = {k: v for k, v in REPORTED_SETTINGS.items() if k != "LedBrightness"}
+    peripheral.values[QUICK_SETTINGS_UUID] = json.dumps(shrunk).encode()
+    await client.refresh()
+
+    assert "LedBrightness" not in client.state.quick_settings
+    assert "ScreenBrightness" in client.state.quick_settings
+
+
+@pytest.mark.asyncio
+async def test_a_notification_adds_to_what_is_known_rather_than_replacing_it() -> None:
+    """A push is unsolicited, so it is trusted to add but not to subtract.
+
+    The window is documented to echo the whole document, but nothing forces
+    it to, and dropping every key a partial push omitted would be a worse
+    failure than briefly keeping one the next read will clear.
+    """
+    peripheral = FakeBleakClient()
+    client = AtmophClient(peripheral)
+    await client.initialize()
+
+    peripheral.notify(QUICK_SETTINGS_UUID, json.dumps({"SoundOnly": True}).encode())
+
+    assert client.state.quick_settings["SoundOnly"] is True
+    assert "LedBrightness" in client.state.quick_settings
+
+
+@pytest.mark.asyncio
+async def test_a_window_reporting_no_uuid_fails_the_identity_check() -> None:
+    """Saying nothing must not be a way to pass a check about who you are.
+
+    Discovery resolves a shared advertised name to whichever window is
+    loudest. If an absent UUID were treated as unknown-and-therefore-fine,
+    the check would be defeated by silence and the entry would write to the
+    wrong window.
+    """
+    peripheral = FakeBleakClient(device_uuid=False)
+    client = AtmophClient(peripheral)
+
+    with pytest.raises(WrongWindowError):
+        await client.initialize("device-uuid")
+
+    assert peripheral.writes == []
 
 
 @pytest.mark.asyncio

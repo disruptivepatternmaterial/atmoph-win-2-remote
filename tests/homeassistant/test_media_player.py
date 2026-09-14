@@ -30,7 +30,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.atmoph_window.media_player import VOLUME_SETTING
 
-from .fakes import VIEW_IMAGE_URL, FakeBluetooth
+from .fakes import FakeBluetooth
 
 ENTITY_ID = "media_player.living_room_window"
 
@@ -54,7 +54,9 @@ async def test_the_window_presents_the_current_view_as_something_playing(
     assert state.state == MediaPlayerState.PLAYING
     assert state.attributes["media_title"] == "Kyoto"
     assert state.attributes["media_artist"] == "Kyoto, Japan"
-    assert state.attributes["entity_picture"] or VIEW_IMAGE_URL
+    # Home Assistant proxies the thumbnail rather than exposing the window's
+    # URL, so the assertion is that cover art is offered at all.
+    assert state.attributes["entity_picture"]
 
 
 async def test_a_sleeping_display_is_off_rather_than_idle(

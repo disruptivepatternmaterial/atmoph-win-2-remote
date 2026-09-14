@@ -157,8 +157,25 @@ class AtmophState:
         self.power = value == "true"
 
     def apply_quick_settings(self, payload: dict[str, object]) -> None:
-        """Merge a complete quick-settings document."""
+        """Merge a quick-settings document the window pushed.
+
+        Merged rather than replaced because a notification is unsolicited: if
+        a future firmware ever pushed a partial document, replacing would drop
+        every key it happened to omit. A key the window has stopped reporting
+        therefore lingers until the next full read, which is what
+        `replace_quick_settings` is for.
+        """
         self.quick_settings.update(payload)
+
+    def replace_quick_settings(self, payload: dict[str, object]) -> None:
+        """Adopt a quick-settings document read in full from the window.
+
+        A read returns the whole document, so anything missing from it is
+        something the window no longer reports - a firmware that dropped a
+        setting, or one that never had it. Merging here would keep serving a
+        value nothing on the device stands behind.
+        """
+        self.quick_settings = dict(payload)
 
     def apply_setting_write(self, name: str, value: bool | int | str) -> None:
         """Record a value written locally until the window reports it back.
