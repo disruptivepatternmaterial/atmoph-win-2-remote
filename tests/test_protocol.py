@@ -168,7 +168,7 @@ def test_text_stream_recovers_after_malformed_bytes() -> None:
 
 def test_state_parses_identity_power_and_levels() -> None:
     state = AtmophState()
-    state.apply_identity(b"device-uuid,Living Room")
+    state.apply_identity("device-uuid,Living Room")
     state.apply_power(b"true")
     level = Level.from_wire({"min": 1, "max": 10, "value": 6})
     assert state.device_uuid == "device-uuid"
@@ -186,7 +186,7 @@ def test_an_identity_without_a_uuid_reports_none_rather_than_a_placeholder() -> 
     """
     state = AtmophState()
 
-    state.apply_identity(b",Living Room")
+    state.apply_identity(",Living Room")
 
     assert state.device_uuid is None
     assert state.name == "Living Room"
@@ -196,7 +196,7 @@ def test_an_identity_carrying_only_a_uuid_leaves_the_name_unset() -> None:
     """The app slices the payload at index 36, so a short one has no name."""
     state = AtmophState()
 
-    state.apply_identity(b"device-uuid")
+    state.apply_identity("device-uuid")
 
     assert state.device_uuid == "device-uuid"
     assert state.name is None
@@ -420,6 +420,53 @@ async def test_a_peripheral_without_a_service_table_describes_nothing() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("uuid", "payload"),
+    [
+        (POWER_UUID, b""),
+        (POWER_UUID, b"1"),
+        (POWER_UUID, b"\xff"),
+        (IDENTITY_UUID, b"\xff"),
+        (VIEW_TITLE_UUID, b"\xff\xfe"),
+        (QUICK_SETTINGS_UUID, b'{"ScreenBrightness":{"min":1,'),
+        (QUICK_SETTINGS_UUID, b""),
+    ],
+)
+async def test_one_unusable_value_does_not_cost_every_entity(
+    uuid: str, payload: bytes
+) -> None:
+    """A garbled field is not a reason to have no state at all.
+
+    This used to fail the whole refresh, and for an entry that had already
+    adopted a device UUID it was permanent: the stored identity never
+    changes, so every retry failed identically and the window never loaded
+    again. A read that *fails* still propagates - that is the link being
+    gone, which the caller must know about.
+    """
+    peripheral = FakeBleakClient()
+    client = AtmophClient(peripheral)
+    await client.initialize()
+    peripheral.values[uuid] = payload
+
+    state = await client.refresh()
+
+    # Whatever the odd field costs, everything else survives.
+    assert state.view_location == "Kyoto, Japan"
+    if uuid != QUICK_SETTINGS_UUID:
+        assert state.quick_settings["ScreenBrightness"] == {
+            "min": 1,
+            "max": 25,
+            "value": 6,
+        }
+    if uuid == POWER_UUID:
+        # Unknown beats stale: power can only be set by toggling, so acting
+        # on a remembered value is how a display ends up inverted.
+        assert state.power is None
+    if uuid == QUICK_SETTINGS_UUID:
+        assert state.quick_settings != {}
+
+
+@pytest.mark.asyncio
 async def test_a_full_read_drops_a_setting_the_window_no_longer_reports() -> None:
     """A read returns the whole document, so what is missing is gone.
 
@@ -459,19 +506,34 @@ async def test_a_notification_adds_to_what_is_known_rather_than_replacing_it() -
 
 
 @pytest.mark.asyncio
-async def test_a_window_reporting_no_uuid_fails_the_identity_check() -> None:
-    """Saying nothing must not be a way to pass a check about who you are.
+async def test_a_window_reporting_no_uuid_is_used_but_warned_about(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Refusing this would be permanent, and it is weak evidence anyway.
 
-    Discovery resolves a shared advertised name to whichever window is
-    loudest. If an absent UUID were treated as unknown-and-therefore-fine,
-    the check would be defeated by silence and the entry would write to the
-    wrong window.
+    The stored identity never changes, so a window that has stopped reporting
+    its UUID would fail every retry and the entry would never load again. An
+    absent UUID also says little about an impostor: a different window answers
+    with its own rather than with nothing. So it proceeds, and says so.
     """
     peripheral = FakeBleakClient(device_uuid=False)
     client = AtmophClient(peripheral)
 
+    state = await client.initialize("device-uuid")
+
+    assert state.device_uuid is None
+    assert (COMMAND_UUID, b"C", True) in peripheral.writes
+    assert "identity could not be confirmed" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_a_window_reporting_a_different_uuid_is_still_refused() -> None:
+    """A window that names itself and names something else is the wrong window."""
+    peripheral = FakeBleakClient()
+    client = AtmophClient(peripheral)
+
     with pytest.raises(WrongWindowError):
-        await client.initialize("device-uuid")
+        await client.initialize("device-uuid-somewhere-else")
 
     assert peripheral.writes == []
 

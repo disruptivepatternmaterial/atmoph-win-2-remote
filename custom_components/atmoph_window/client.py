@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import logging
 from collections.abc import Callable
 from typing import Any, Protocol
 
@@ -30,6 +31,8 @@ from .protocol import (
 # The display reports its new state within about a second of accepting a
 # toggle. A second toggle sent too soon after the first is silently discarded,
 # so the retry pause is deliberately longer than the confirmation window.
+_LOGGER = logging.getLogger(__name__)
+
 _POWER_POLL_INTERVAL = 0.5
 _POWER_POLLS = 6
 _POWER_RETRY_DELAY = 2.0
@@ -86,6 +89,7 @@ class AtmophClient:
         self,
         client: BleakClientLike,
         on_update: Callable[[AtmophState], None] | None = None,
+        state: AtmophState | None = None,
     ) -> None:
         self._client = client
         self._on_update = on_update
@@ -97,7 +101,10 @@ class AtmophClient:
             VIEW_LOCATION_UUID: TextStream(),
         }
         self._lock = asyncio.Lock()
-        self.state = AtmophState()
+        # A reconnect starts from what the last one knew, so a window that
+        # answers one characteristic oddly does not cost every entity its
+        # value on the way back up.
+        self.state = state if state is not None else AtmophState()
 
     @property
     def is_connected(self) -> bool:
@@ -124,15 +131,23 @@ class AtmophClient:
         await self.refresh()
 
         reported = self.state.device_uuid
-        # A window that reports nothing has not proved it is the right one, so
-        # it is refused too. Otherwise the check is trivially defeated by
-        # saying nothing, and the entry writes to whichever window answered
-        # loudest under the shared advertised name.
-        if expect_device_uuid is not None and reported != expect_device_uuid:
-            raise WrongWindowError(
-                f"Connected window reports {reported!r}, "
-                f"expected {expect_device_uuid!r}"
-            )
+        if expect_device_uuid is not None:
+            if reported is not None and reported != expect_device_uuid:
+                raise WrongWindowError(
+                    f"Connected window reports {reported!r}, "
+                    f"expected {expect_device_uuid!r}"
+                )
+            if reported is None:
+                # Refusing here would be permanent: the stored identity never
+                # changes, so a window that has stopped reporting its UUID
+                # would fail every retry and the entry would never load again.
+                # An absent UUID is also weak evidence of an impostor, since a
+                # different window would answer with its own.
+                _LOGGER.warning(
+                    "%s did not report a device UUID, so this connection's "
+                    "identity could not be confirmed",
+                    expect_device_uuid,
+                )
 
         await self.send_command("connect_notify")
         return self.state
@@ -183,21 +198,71 @@ class AtmophClient:
                 await self._client.stop_notify(uuid)
 
     async def refresh(self) -> AtmophState:
-        """Read all stable state exposed by the Android app."""
+        """Read all stable state exposed by the Android app.
+
+        A failed *read* is a transport problem and propagates: the caller has
+        to know the link is no longer answering. A value that reads fine and
+        then will not parse is a different thing, and is tolerated per field.
+
+        The distinction matters because one unexpected byte used to fail the
+        whole refresh, and for an entry that had already adopted a device UUID
+        that was permanent: the stored identity never changes, so every retry
+        failed the same way and the window never loaded again. Losing one
+        field is not a reason to have no entities.
+        """
         async with self._lock:
-            self.state.apply_identity(await self._read(IDENTITY_UUID))
-            self.state.panorama_role = decode_text(await self._read(PANORAMA_ROLE_UUID))
-            self.state.view_title = decode_text(await self._read(VIEW_TITLE_UUID))
-            self.state.view_image_url = decode_text(await self._read(VIEW_IMAGE_UUID))
-            self.state.view_location = decode_text(await self._read(VIEW_LOCATION_UUID))
-            self.state.apply_power(await self._read(POWER_UUID))
-            raw_settings = decode_text(await self._read(QUICK_SETTINGS_UUID))
-            if raw_settings:
-                settings = json.loads(raw_settings)
-                if isinstance(settings, dict):
-                    self.state.replace_quick_settings(settings)
+            if (identity := await self._read_text(IDENTITY_UUID)) is not None:
+                self.state.apply_identity(identity)
+            if (role := await self._read_text(PANORAMA_ROLE_UUID)) is not None:
+                self.state.panorama_role = role
+            if (title := await self._read_text(VIEW_TITLE_UUID)) is not None:
+                self.state.view_title = title
+            if (image := await self._read_text(VIEW_IMAGE_UUID)) is not None:
+                self.state.view_image_url = image
+            if (location := await self._read_text(VIEW_LOCATION_UUID)) is not None:
+                self.state.view_location = location
+            self._apply_power_read(await self._read(POWER_UUID))
+            self._apply_settings_read(await self._read(QUICK_SETTINGS_UUID))
             await self._read_view_id()
         return self.state
+
+    async def _read_text(self, uuid: str) -> str | None:
+        """Read one text field. None means it arrived garbled, not that it failed."""
+        payload = await self._read(uuid)
+        try:
+            return decode_text(payload)
+        except UnicodeDecodeError:
+            _LOGGER.debug("Undecodable value read from %s", uuid)
+            return None
+
+    def _apply_power_read(self, payload: bytes) -> None:
+        """Store display power, preferring unknown over a remembered value.
+
+        The only way to set power is a toggle, so acting on a stale reading is
+        how a display ends up inverted. Reporting that it is not known is the
+        safer failure.
+        """
+        try:
+            self.state.apply_power(payload)
+        except (UnicodeDecodeError, ValueError):
+            _LOGGER.debug("Unusable display power value; treating it as unknown")
+            self.state.power = None
+
+    def _apply_settings_read(self, payload: bytes) -> None:
+        """Adopt a settings document, or keep what is known if none arrived.
+
+        An empty or unparseable read carries no information, and treating it
+        as an empty document would take every level and switch entity down
+        with it while the refresh still reported success.
+        """
+        try:
+            document = json.loads(decode_text(payload))
+        except (UnicodeDecodeError, ValueError):
+            _LOGGER.debug("Unparseable quick-settings read; keeping known values")
+            return
+
+        if isinstance(document, dict) and document:
+            self.state.replace_quick_settings(document)
 
     async def _read_view_id(self) -> None:
         """Read the view id, treating an absent characteristic as normal.

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import codecs
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Final
 
 SERVICE_UUID: Final = "c1e0d952-12f7-4c84-b67d-fc26f55243a0"
@@ -132,9 +132,14 @@ class AtmophState:
     power: bool | None = None
     quick_settings: dict[str, object] = field(default_factory=dict)
 
-    def apply_identity(self, payload: bytes) -> None:
-        """Parse the app's comma-separated device UUID and display name."""
-        parts = decode_text(payload).split(",", 1)
+    def apply_identity(self, text: str) -> None:
+        """Parse the app's comma-separated device UUID and display name.
+
+        Takes text rather than bytes because decoding is the transport's job:
+        a value that will not decode is something the caller has to decide
+        about, not something to raise from the middle of parsing.
+        """
+        parts = text.split(",", 1)
         self.device_uuid = parts[0] or None
         self.name = parts[1] if len(parts) > 1 and parts[1] else None
 
@@ -155,6 +160,17 @@ class AtmophState:
         if value not in {"true", "false"}:
             raise ValueError(f"Unexpected power payload: {value!r}")
         self.power = value == "true"
+
+    def copy(self) -> AtmophState:
+        """Return an independent snapshot of what is currently known.
+
+        A reconnect starts from this rather than from nothing, so a window
+        that answers one characteristic oddly does not cost every entity its
+        value. It is a copy because the connection has not proved which
+        window it reached yet, and an unverified one must not be able to write
+        into the state Home Assistant is already publishing.
+        """
+        return replace(self, quick_settings=dict(self.quick_settings))
 
     def apply_quick_settings(self, payload: dict[str, object]) -> None:
         """Merge a quick-settings document the window pushed.

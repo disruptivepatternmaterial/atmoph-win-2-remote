@@ -147,7 +147,12 @@ class AtmophCoordinator(DataUpdateCoordinator[AtmophState]):
         # State is not published until the window has proved it is the one this
         # entry was set up for, so a wrong window cannot write its view or its
         # power into this entry's entities on the way to being rejected.
-        client = AtmophClient(self._bleak)
+        # A copy, because this connection has not proved which window it
+        # reached: an unverified one must not write into the state Home
+        # Assistant is already publishing.
+        client = AtmophClient(
+            self._bleak, state=self.data.copy() if self.data is not None else None
+        )
         try:
             await client.initialize(self.config_entry.data.get(CONF_DEVICE_UUID))
         except Exception:
