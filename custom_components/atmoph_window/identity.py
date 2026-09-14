@@ -61,21 +61,26 @@ async def async_adopt_device_uuid(
     it would orphan the history of the one the entry was set up for.
     """
     name = entry.data[CONF_ADVERTISED_NAME]
+    adopting = bool(device_uuid) and not entry.data.get(CONF_DEVICE_UUID)
 
-    if device_uuid and not entry.data.get(CONF_DEVICE_UUID):
+    if adopting:
         _async_refuse_claimed_uuid(hass, entry, device_uuid)
-        # Leaving the entry on its name is recoverable; a half-moved registry
-        # is not, so a blocked rekey must not be followed by the entry write.
-        if not await _async_reconcile(hass, entry, name, device_uuid):
-            return
+
+    # Adoption is reconciling towards a key the entry has not stored yet;
+    # every other setup reconciles towards the one it has, which repairs a
+    # rekey whose registry write was lost after the entry write landed and is
+    # a no-op whenever the two stores already agree.
+    key = device_uuid if adopting else async_device_key(entry)
+
+    # Leaving the entry on its name is recoverable; a half-moved registry is
+    # not, so a blocked rekey must not be followed by the entry write.
+    if not await _async_reconcile(hass, entry, name, key):
+        return
+
+    if adopting:
         hass.config_entries.async_update_entry(
             entry, data={**entry.data, CONF_DEVICE_UUID: device_uuid}
         )
-        return
-
-    # Repair a rekey whose registry write was lost after the entry write
-    # landed. A no-op whenever the two stores already agree.
-    await _async_reconcile(hass, entry, name, async_device_key(entry))
 
 
 @callback
