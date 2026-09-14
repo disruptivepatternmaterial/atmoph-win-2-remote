@@ -3,12 +3,10 @@
 from __future__ import annotations
 
 import json
-import pathlib
 from datetime import timedelta
 
 import pytest
 from homeassistant.components.bluetooth import BluetoothChange
-from homeassistant.components.diagnostics import REDACTED
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import (
     STATE_OFF,
@@ -20,7 +18,6 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
-from homeassistant.util.yaml import load_yaml_dict
 from pytest_homeassistant_custom_component.common import (
     MockConfigEntry,
     async_fire_time_changed,
@@ -33,16 +30,12 @@ from custom_components.atmoph_window.const import (
     CONF_DEVICE_UUID,
     DOMAIN,
 )
-from custom_components.atmoph_window.diagnostics import (
-    async_get_config_entry_diagnostics,
-)
 from custom_components.atmoph_window.number import NUMBERS, AtmophNumber
 from custom_components.atmoph_window.protocol import (
     COMMANDS,
     PANORAMA_ROLE_UUID,
     POWER_UUID,
     QUICK_SETTINGS_UUID,
-    SETTING_KEYS,
     VIEW_ID_UUID,
     VIEW_IMAGE_UUID,
     VIEW_LOCATION_UUID,
@@ -55,7 +48,6 @@ from .fakes import (
     ROTATED_ADDRESS,
     SECOND_WINDOW_ADDRESS,
     VIEW_ID,
-    VIEW_IMAGE_URL,
     VIEW_REVISION,
     WINDOW_ADDRESS,
     WINDOW_NAME,
@@ -63,18 +55,7 @@ from .fakes import (
     device_uuid_for,
     make_service_info,
 )
-
-INTEGRATION = pathlib.Path(__file__).parents[2] / "custom_components" / DOMAIN
-
-
-def entity_id_for(hass: HomeAssistant, platform: str, key: str) -> str:
-    """Resolve an entity id from the unique id the integration assigns."""
-    registry = er.async_get(hass)
-    entity_id = registry.async_get_entity_id(
-        platform, DOMAIN, f"{device_uuid_for()}_{key}"
-    )
-    assert entity_id is not None, f"no {platform} entity registered for {key}"
-    return entity_id
+from .helpers import INTEGRATION, entity_id_for
 
 
 async def test_setup_creates_entities_and_unload_releases_the_connection(
@@ -867,37 +848,6 @@ async def test_a_view_id_that_stops_answering_does_not_fail_the_update(
     assert coordinator.data.view_id_supported is False
 
 
-async def test_diagnostics_redact_stable_identifiers(
-    hass: HomeAssistant, fake_bluetooth: FakeBluetooth, loaded_entry: MockConfigEntry
-) -> None:
-    """Diagnostics are pasted into public issues, so nothing may identify a window.
-
-    Named field by field and then checked again against the whole document,
-    because a field dropped from the redaction list still exists - it just
-    carries the real value, which reads as a plausible diagnostic until
-    someone correlates it.
-    """
-    diagnostics = await async_get_config_entry_diagnostics(hass, loaded_entry)
-
-    assert diagnostics["last_update_success"] is True
-    assert diagnostics["entry"] == {
-        "advertised_name": REDACTED,
-        "address": REDACTED,
-        "device_uuid": REDACTED,
-    }
-    assert diagnostics["state"]["device_uuid"] == REDACTED
-    assert diagnostics["state"]["name"] == REDACTED
-    assert diagnostics["state"]["view_image_url"] == REDACTED
-
-    serialised = json.dumps(diagnostics)
-    for secret in (WINDOW_NAME, WINDOW_ADDRESS, VIEW_IMAGE_URL, device_uuid_for()):
-        assert secret not in serialised
-
-    # The view itself is not an identifier, and diagnostics with no state in
-    # them are not worth collecting.
-    assert diagnostics["state"]["view_title"] == "Kyoto"
-
-
 def test_every_button_maps_to_a_command_the_protocol_knows() -> None:
     """A button passes its own key to the encoder, which raises on a stranger.
 
@@ -909,45 +859,6 @@ def test_every_button_maps_to_a_command_the_protocol_knows() -> None:
     keys = {description.key for description in BUTTONS}
 
     assert keys <= set(COMMANDS), keys - set(COMMANDS)
-
-
-async def test_diagnostics_carry_the_live_gatt_table(
-    hass: HomeAssistant, fake_bluetooth: FakeBluetooth, loaded_entry: MockConfigEntry
-) -> None:
-    """The table is the one thing only a window owner can supply.
-
-    Which characteristics a Window 2 really exposes is still open, because the
-    app declares several it never binds and the second service has only ever
-    been seen on other hardware. A report that carries the table answers that
-    from anyone who owns one, and it survives redaction because service and
-    characteristic UUIDs describe a model rather than a unit.
-    """
-    diagnostics = await async_get_config_entry_diagnostics(hass, loaded_entry)
-
-    assert [service["service"] for service in diagnostics["gatt"]] == [
-        "401f7f45-2258-4f9b-8204-f8b301b4dcc5",
-        "c1e0d952-12f7-4c84-b67d-fc26f55243a0",
-    ]
-    power = next(
-        char
-        for service in diagnostics["gatt"]
-        for char in service["characteristics"]
-        if char["uuid"] == POWER_UUID
-    )
-    assert power["properties"] == ["notify", "read", "write"]
-
-
-async def test_diagnostics_omit_the_gatt_table_while_disconnected(
-    hass: HomeAssistant, fake_bluetooth: FakeBluetooth, loaded_entry: MockConfigEntry
-) -> None:
-    """Reporting a remembered table as live would be worse than reporting none."""
-    await fake_bluetooth.client.disconnect()
-    await hass.async_block_till_done()
-
-    diagnostics = await async_get_config_entry_diagnostics(hass, loaded_entry)
-
-    assert diagnostics["gatt"] == []
-    assert diagnostics["last_update_success"] is False
 
 
 async def test_every_registered_entity_has_a_translated_name(
@@ -986,62 +897,3 @@ async def test_every_registered_entity_has_a_translated_name(
 
     assert declared == registered
     assert device_named <= {entry.domain for entry in entries}
-
-
-def test_english_translations_match_the_source_strings() -> None:
-    """`translations/en.json` is the shipped copy of `strings.json`."""
-    strings = json.loads((INTEGRATION / "strings.json").read_text())
-    english = json.loads((INTEGRATION / "translations" / "en.json").read_text())
-
-    assert strings == english
-
-
-def test_every_service_and_field_is_documented() -> None:
-    """hassfest rejects a service or field with no name, and so does this.
-
-    The local check exists because hassfest only runs in CI, where a missing
-    string is found after the push rather than before it.
-    """
-    services = load_yaml_dict(str(INTEGRATION / "services.yaml"))
-    strings = json.loads((INTEGRATION / "strings.json").read_text())
-
-    assert set(services) == set(strings["services"])
-    for name, schema in services.items():
-        documented = strings["services"][name]
-        assert documented["name"]
-        assert documented["description"]
-        assert set(schema["fields"]) == set(documented["fields"])
-        for field in documented["fields"].values():
-            assert field["name"]
-            assert field["description"]
-
-
-def test_service_pickers_offer_exactly_the_protocol_tokens() -> None:
-    """A picker that drifts from the protocol offers a token the handler refuses."""
-    services = load_yaml_dict(str(INTEGRATION / "services.yaml"))
-
-    def options(service: str, field: str) -> set[str]:
-        return set(services[service]["fields"][field]["selector"]["select"]["options"])
-
-    assert options("send_command", "command") == set(COMMANDS)
-    assert options("set_setting", "setting") == set(SETTING_KEYS)
-
-
-def test_service_targets_carry_no_device_filter() -> None:
-    """hassfest refuses a device filter on a service target."""
-    services = load_yaml_dict(str(INTEGRATION / "services.yaml"))
-
-    for schema in services.values():
-        assert "device" not in schema["target"]
-        assert schema["target"]["entity"] == {"integration": DOMAIN}
-
-
-def test_declared_icons_belong_to_declared_entities() -> None:
-    """An icon under an unknown translation key is silently never shown."""
-    icons = json.loads((INTEGRATION / "icons.json").read_text())
-    strings = json.loads((INTEGRATION / "strings.json").read_text())
-
-    for platform, entries in icons["entity"].items():
-        assert set(entries) <= set(strings["entity"][platform])
-        for entry in entries.values():
-            assert entry["default"].startswith("mdi:")

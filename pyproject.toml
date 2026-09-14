@@ -20,6 +20,8 @@ dependencies = [
 # importing it would pull in the USB and serial stacks that
 # homeassistant.components.bluetooth depends on, for no test coverage gain.
 dev = [
+  # tests/test_manifest.py reads services.yaml without Home Assistant.
+  "pyyaml>=6.0",
   "pytest>=9.0.0",
   "pytest-asyncio>=1.1.0",
   "ruff>=0.12.0",
