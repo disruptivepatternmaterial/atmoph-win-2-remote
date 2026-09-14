@@ -129,6 +129,7 @@ class FakeBleakClient:
         if view_id:
             self.values[VIEW_ID_UUID] = f"{VIEW_ID}/{VIEW_REVISION}".encode()
         self.writes: list[tuple[str, bytes]] = []
+        self.reads: list[str] = []
         self.notifications: dict[str, Callable[[Any, bytearray], None]] = {}
         self.pending_notifications: list[tuple[str, bytes]] = []
         self.display = DisplayPower(clock if clock is not None else FakeClock())
@@ -160,6 +161,7 @@ class FakeBleakClient:
         A characteristic the window does not implement is missing rather than
         empty, which is what a real read of one raises on.
         """
+        self.reads.append(char_specifier)
         # The display reports a change only once it has had time to; see
         # DisplayPower.confirm_after.
         if char_specifier == POWER_UUID and self.display.take_due_change():

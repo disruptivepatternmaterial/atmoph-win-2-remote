@@ -186,6 +186,52 @@ async def test_a_dropped_connection_makes_the_entities_unavailable(
     assert loaded_entry.runtime_data.last_update_success is False
 
 
+async def test_a_notification_does_not_postpone_the_scheduled_read(
+    hass: HomeAssistant,
+    fake_bluetooth: FakeBluetooth,
+    loaded_entry: MockConfigEntry,
+) -> None:
+    """The poll is the only thing that re-reads bounds, so it must keep its own pace.
+
+    With the daily routine on, a window changes view by itself for as long as
+    it is switched on. If each of those pushes deferred the refresh, a window
+    in that mode would never run one.
+    """
+    coordinator = loaded_entry.runtime_data
+    # The pending read, observed directly. Asserting on elapsed time instead
+    # cannot tell the two behaviours apart, because a reschedule lands where
+    # the read was already due.
+    pending = coordinator._unsub_refresh
+
+    fake_bluetooth.client.notify(VIEW_TITLE_UUID, b"Osaka")
+    await hass.async_block_till_done()
+
+    assert coordinator.data.view_title == "Osaka"
+    assert coordinator._unsub_refresh is pending, "the push rearmed the read"
+
+
+async def test_a_rotation_seen_only_as_nameless_advertisements_recovers(
+    hass: HomeAssistant, fake_bluetooth: FakeBluetooth, loaded_entry: MockConfigEntry
+) -> None:
+    """A nameless window is still a window, and identity is checked anyway.
+
+    The name rides in the scan response, so a window can be visible and
+    nameless for a long stretch. After a rotation the remembered address is
+    the one that rotated away, which used to leave nothing to try and the
+    entry down indefinitely.
+    """
+    display = entity_id_for(hass, "switch", "display")
+    fake_bluetooth.client.connected = False
+    # Visible, carrying the vendor service, and offering no name at all.
+    fake_bluetooth.service_infos = [make_service_info(name="", address=ROTATED_ADDRESS)]
+
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=61))
+    await hass.async_block_till_done()
+
+    assert fake_bluetooth.client.address == ROTATED_ADDRESS
+    assert hass.states.get(display).state == STATE_ON
+
+
 async def test_a_superseded_links_disconnect_is_ignored(
     hass: HomeAssistant, fake_bluetooth: FakeBluetooth, loaded_entry: MockConfigEntry
 ) -> None:

@@ -220,17 +220,51 @@ class AtmophCoordinator(DataUpdateCoordinator[AtmophState]):
         ]
         if candidates:
             return max(candidates, key=lambda info: info.rssi).device
-        if self._last_address:
-            return bluetooth.async_ble_device_from_address(
+        if self._last_address and (
+            device := bluetooth.async_ble_device_from_address(
                 self.hass, self._last_address, connectable=True
             )
+        ):
+            return device
+
+        # The name rides in the scan response, so a window can be visible and
+        # nameless for a long stretch - and after an address rotation the
+        # remembered address is the one that rotated away, leaving nothing to
+        # try. Any window advertising the vendor service is worth attempting,
+        # because identity is confirmed after connecting and a wrong one is
+        # refused before anything is written to it.
+        nameless = [
+            info
+            for info in bluetooth.async_discovered_service_info(
+                self.hass, connectable=True
+            )
+            if not info.name
+            and SERVICE_UUID in {uuid.lower() for uuid in info.service_uuids}
+        ]
+        if nameless:
+            return max(nameless, key=lambda info: info.rssi).device
         return None
 
     # Bleak delivers notifications and the disconnect callback from whichever
     # thread its backend runs on, and Home Assistant refuses to write entity
     # state off the event loop. Both hops therefore go through the loop.
     def _handle_state(self, state: AtmophState) -> None:
-        self.hass.loop.call_soon_threadsafe(self.async_set_updated_data, state)
+        self.hass.loop.call_soon_threadsafe(self._publish_pushed_state, state)
+
+    @callback
+    def _publish_pushed_state(self, state: AtmophState) -> None:
+        """Publish pushed state without deferring the scheduled read.
+
+        `async_set_updated_data` reschedules the refresh, so a window that
+        notifies steadily would keep postponing it - and with the daily
+        routine on, a window changes view by itself indefinitely. The poll is
+        the only thing that re-reads the setting bounds and retries the
+        characteristics a window may not have answered before, so it has to
+        keep its own cadence rather than being pushed back by good news.
+        """
+        self.data = state
+        self.last_update_success = True
+        self.async_update_listeners()
 
     def _disconnected(self, client: Any) -> None:
         self.hass.loop.call_soon_threadsafe(self._mark_disconnected, client)
