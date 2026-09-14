@@ -15,7 +15,7 @@ from homeassistant.const import (
     EntityCategory,
 )
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ServiceValidationError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import (
@@ -640,6 +640,30 @@ async def test_number_rejects_a_value_outside_the_reported_range(
         "maximum": "25",
     }
     assert fake_bluetooth.client.writes[-1][0] != QUICK_SETTINGS_UUID
+
+
+async def test_a_setting_write_that_times_out_does_not_blame_display_power(
+    hass: HomeAssistant, fake_bluetooth: FakeBluetooth, loaded_entry: MockConfigEntry
+) -> None:
+    """A brightness slider must not report a display-power problem.
+
+    Every failure reaching a user passes through one translator, so a message
+    scoped to one operation is wrong for the rest. The display-power wording
+    tells the owner to try again in a few seconds, which is useless advice for
+    a link that has gone away.
+    """
+
+    async def refuse(*args: object, **kwargs: object) -> None:
+        raise TimeoutError("write timed out")
+
+    fake_bluetooth.client.write_gatt_char = refuse
+    description = next(item for item in NUMBERS if item.key == "screen_brightness")
+    entity = AtmophNumber(loaded_entry.runtime_data, description)
+
+    with pytest.raises(HomeAssistantError) as err:
+        await entity.async_set_native_value(5)
+
+    assert err.value.translation_key == "not_reachable"
 
 
 async def test_button_sends_the_mapped_command(

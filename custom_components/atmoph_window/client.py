@@ -48,6 +48,15 @@ class WrongWindowError(Exception):
     """
 
 
+class PowerNotConfirmedError(Exception):
+    """Raised when the display never reported the power state that was asked for.
+
+    Distinct from a transport timeout, which this deliberately is not: the
+    window answered every read, it just never moved. The two need different
+    messages, because only one of them is worth retrying in a few seconds.
+    """
+
+
 class BleakClientLike(Protocol):
     """Subset of BleakClient used by the protocol client."""
 
@@ -310,7 +319,9 @@ class AtmophClient:
             if await self._await_power(desired):
                 return
 
-        raise TimeoutError("Window did not confirm the requested display power state")
+        raise PowerNotConfirmedError(
+            "Window did not confirm the requested display power state"
+        )
 
     async def _await_power(self, desired: bool) -> bool:
         """Poll the power characteristic until it reports the desired state."""

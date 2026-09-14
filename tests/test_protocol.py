@@ -11,7 +11,11 @@ from typing import Any
 import pytest
 
 from custom_components.atmoph_window import client as client_module
-from custom_components.atmoph_window.client import AtmophClient, WrongWindowError
+from custom_components.atmoph_window.client import (
+    AtmophClient,
+    PowerNotConfirmedError,
+    WrongWindowError,
+)
 from custom_components.atmoph_window.protocol import (
     COMMAND_UUID,
     FOCUSING_VIEW_UUID,
@@ -951,5 +955,29 @@ async def test_power_control_gives_up_when_never_confirmed(clock: FakeClock) -> 
             self.writes.append((char_specifier, data, response))
 
     client = AtmophClient(UnresponsivePeripheral(clock=clock))
-    with pytest.raises(TimeoutError, match="did not confirm"):
+    with pytest.raises(PowerNotConfirmedError, match="did not confirm"):
         await client.set_power(False)
+
+
+@pytest.mark.asyncio
+async def test_a_display_that_never_moves_is_not_reported_as_a_timeout(
+    clock: FakeClock,
+) -> None:
+    """The window answered every read here, so this is not a transport failure.
+
+    The distinction decides which message the owner gets, and the two are not
+    interchangeable: a window that answers but will not move is worth another
+    press, while one that has stopped answering is asleep or out of range.
+    """
+
+    class UnresponsivePeripheral(FakeBleakClient):
+        async def write_gatt_char(
+            self, char_specifier: str, data: bytes, response: bool
+        ) -> None:
+            self.writes.append((char_specifier, data, response))
+
+    client = AtmophClient(UnresponsivePeripheral(clock=clock))
+    with pytest.raises(PowerNotConfirmedError) as raised:
+        await client.set_power(False)
+
+    assert not isinstance(raised.value, TimeoutError)

@@ -20,7 +20,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .client import AtmophClient, WrongWindowError
+from .client import AtmophClient, PowerNotConfirmedError, WrongWindowError
 from .const import (
     CONF_ADVERTISED_NAME,
     CONF_DEVICE_UUID,
@@ -99,7 +99,7 @@ class AtmophCoordinator(DataUpdateCoordinator[AtmophState]):
                 translation_key="wrong_window",
                 translation_placeholders={"name": self.advertised_name},
             ) from err
-        except TimeoutError as err:
+        except PowerNotConfirmedError as err:
             raise HomeAssistantError(
                 translation_domain=DOMAIN,
                 translation_key="power_not_confirmed",
@@ -178,9 +178,9 @@ class AtmophCoordinator(DataUpdateCoordinator[AtmophState]):
         if device is None:
             raise self._unreachable()
 
-        # Release whatever came before rather than overwriting the reference.
         # A dropped client keeps its notify subscriptions and its disconnect
-        # callback armed, so leaking one leaves a live link nothing will close.
+        # callback armed, so overwriting the reference instead of releasing it
+        # would leave a live link nothing will ever close.
         await self._async_disconnect()
 
         self._last_address = device.address
