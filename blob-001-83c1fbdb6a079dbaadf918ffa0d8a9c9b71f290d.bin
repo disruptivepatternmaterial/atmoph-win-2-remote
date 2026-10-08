@@ -1,0 +1,85 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build HACS archive
+        run: |
+          mkdir -p release
+          cp -R custom_components/atmoph_window release/atmoph_window
+          cd release
+          zip -r ../atmoph_window.zip atmoph_window
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" atmoph_window.zip --generate-notes --verify-tag
+name: release
+
+# hacs.json sets "zip_release" with "filename": "atmoph_window.zip" and
+# "hide_default_branch": true, so HACS installs *only* from that asset on a
+# release. A tag without the asset is a tag nobody can install, which is why
+# this builds and attaches it rather than leaving it to be remembered.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to build and attach the asset to'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Check the manifest version matches the tag
+        run: |
+          tag="${{ inputs.tag || github.ref_name }}"
+          manifest=$(jq -r .version custom_components/atmoph_window/manifest.json)
+          if [ "v${manifest}" != "$tag" ]; then
+            echo "::error::manifest.json version ${manifest} does not match tag ${tag}"
+            exit 1
+          fi
+
+      # HACS extracts the archive straight into custom_components/<domain>/,
+      # so manifest.json must sit at the archive root, not under a directory.
+      - name: Build the HACS asset
+        run: |
+          cd custom_components/atmoph_window
+          zip -r "${{ github.workspace }}/atmoph_window.zip" . -x '*.pyc' -x '__pycache__/*'
+          cd "${{ github.workspace }}"
+          unzip -l atmoph_window.zip
+
+      # Pushing a tag fires this before any release object exists, so creating
+      # the release has to be part of the job rather than a prerequisite of it.
+      - name: Publish the release with the asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${{ inputs.tag || github.ref_name }}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" atmoph_window.zip --clobber
+          else
+            gh release create "$tag" atmoph_window.zip \
+              --title "$tag" --generate-notes
+          fi
